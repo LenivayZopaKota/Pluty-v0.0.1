@@ -137,3 +137,14 @@ HitBoxPlayerButton.Font = Enum.Font.SourceSansBold
 HitBoxPlayerButton.TextSize = 14
 HitBoxPlayerButton.BorderSizePixel = 0
 HitBoxPlayerButton.Parent = VisualPanel
+
+-- Включение/выключение меню
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if input.KeyCode == Enum.KeyCode.Insert then
+        if ScreenGui.Enabled then
+            ScreenGui.Enabled = false -- Скрываем меню
+        else
+            ScreenGui.Enabled = true -- Показываем меню
+        end
+    end
+end)
