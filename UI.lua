@@ -149,7 +149,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     end
 end)
 
-loadstring(game:HttpGet(""))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKota/Pluty-v0.0.1/refs/heads/main/Visual.lua"))()
 loadstring(game:HttpGet(""))()
 loadstring(game:HttpGet(""))()
 loadstring(game:HttpGet(""))()
