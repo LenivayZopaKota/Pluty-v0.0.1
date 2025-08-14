@@ -1,6 +1,7 @@
 aprplayersLOX = {
     "lenivayzopakota16",
     "lenivayzopakota62",
+    "lenivayzopakota4",
 }
 richgodlies = {"Bat","Candy","Darksword","Darkshot", "Traveler's Gun", "Evergreen","Evergun","Bauble","Rainbow Gun", "Sunrise", "Sunset", "Rainbow","Constellation","Sakura","Blossom","Turkey","Vampire's Gun"}
 richgodliespc = {"TreeKnife2023", "Turkey2023", "TreeGun2023","TravelerGun","Sakura_K", "Blossom_G", "ZombieBat", "Constellation", "Candy", "VampireGun", "SunsetKnife", "SunsetGun","Darksword","Darkshot","Rainbow_G","Rainbow_K","Bauble"}
