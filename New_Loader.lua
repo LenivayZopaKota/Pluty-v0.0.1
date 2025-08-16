@@ -15,5 +15,5 @@ if getgenv().Device == "Mobile" then
     loadstring(game:HttpGet(""))()
 else
     warn("PC SUPPORT")
-    loadstring(game:HttpGet(""))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKota/Pluty-v0.0.1/refs/heads/main/Pluty_Hub.lua"))()
 end
