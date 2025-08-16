@@ -1455,358 +1455,236 @@ end
 
 					------killAll-----
 
-			
-				
-				local Section = Tabs.CombatTab:Section({ 
-					Title = "Murder",
-					TextXAlignment = "Left",
-					TextSize = 17,
-				})
+		local Section = Tabs.CombatTab:Section({ 
+			Title = "Murder",
+			TextXAlignment = "Left",
+			TextSize = 17, -- Default Size
+		})
 
-				--// Services
-				local Players = game:GetService("Players")
-				local ReplicatedStorage = game:GetService("ReplicatedStorage")
-				local RunService = game:GetService("RunService")
+						--// Services
+			local Players = game:GetService("Players")
+			local ReplicatedStorage = game:GetService("ReplicatedStorage")
+			local RunService = game:GetService("RunService")
 
-				--// Locals
-				local LP = Players.LocalPlayer
-				local KnifeRemoteCache = {}
-				local KillAllEnabled = false
-				local ROLES = {}
+			--// Locals
+			local LP = Players.LocalPlayer
+			local KnifeRemote, CachedKnifeName = nil, nil
+			local KillAllEnabled = false
+			local ROLES = {}
 
-				-- ===== Utils =====
-				local function GetRoot(char)
-					if not char then return nil end
-					return char:FindFirstChild("HumanoidRootPart")
-						or char:FindFirstChild("UpperTorso")
-						or char:FindFirstChild("Torso")
+			--// Получение ролей
+			local function UpdateRoles()
+				local success, data = pcall(function()
+					return ReplicatedStorage:FindFirstChild("GetPlayerData", true):InvokeServer()
+				end)
+				if success and type(data) == "table" then
+					ROLES = data
 				end
+			end
 
-				local function IsAlive(plr)
-					if not plr or not plr.Character then return false end
-					local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-					return hum and hum.Health > 0
+			--// Проверка жив
+			local function IsAlive(plr)
+				if not plr or not plr.Character then return false end
+				local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+				return hum and hum.Health > 0
+			end
+
+			--// Получаем часть тела
+			local function GetPreferredPart(plr)
+				if not plr or not plr.Character then return nil end
+				local char = plr.Character
+				local prefer = { "HumanoidRootPart", "UpperTorso", "Torso", "Head" }
+				for _, name in ipairs(prefer) do
+					local p = char:FindFirstChild(name)
+					if p and p:IsA("BasePart") then return p end
 				end
+				return nil
+			end
 
-				local function Message(title, text, time)
-					pcall(function()
-						game:GetService("StarterGui"):SetCore("SendNotification", {
-							Title = title,
-							Text = text,
-							Duration = time or 3
-						})
-					end)
-				end
-
-				-- Таблица ролей (если есть в игре)
-				local function UpdateRoles()
-					local rf = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
-					if not rf then return end
-					local ok, data = pcall(function()
-						return rf:InvokeServer()
-					end)
-					if ok and type(data) == "table" then
-						ROLES = data
+			--// Ищем Remote от ножа
+			local function GetKnifeRemote()
+				if CachedKnifeName and KnifeRemote then
+					local ch = LP.Character
+					if ch and ch:FindFirstChild(CachedKnifeName) then
+						return KnifeRemote
 					end
 				end
 
-				local function RoleIsTarget(plr)
-					local info = ROLES[plr.Name]
-					if not info then
-						-- Фоллбек: если не смогли получить роли — считаем целью всех, кроме нас и мёртвых
-						return true
-					end
-					local role = info.Role or info.role
-					return role == "Innocent" or role == "Sheriff" or role == "Hero"
-				end
+				local char = LP.Character
+				if not char then return nil end
 
-				-- Экип ножа (если ты убийца)
-				local function EquipKnife()
-					local char = LP.Character or LP.CharacterAdded:Wait()
-					local hum = char:FindFirstChildOfClass("Humanoid")
-					if not hum then return nil end
+				local knife = char:FindFirstChild("Knife") or LP.Backpack:FindFirstChild("Knife")
+				if not knife then return nil end
 
-					local knife = char:FindFirstChild("Knife") or LP.Backpack:FindFirstChild("Knife")
-					if not knife then return nil end
-
-					if knife.Parent == LP.Backpack then
-						hum:EquipTool(knife)
-						task.wait(0.05)
-					end
-					return knife
-				end
-
-				-- Собираем все Remote’ы ножа (и кэшируем)
-				local function CollectKnifeRemotes(knife)
-					if not knife then return {} end
-					if KnifeRemoteCache[knife] then
-						return KnifeRemoteCache[knife]
-					end
-					local rems = {}
-					for _, d in ipairs(knife:GetDescendants()) do
-						if d:IsA("RemoteEvent") or d:IsA("RemoteFunction") then
-							rems[#rems+1] = d
+				-- классический поиск RemoteFunction
+				local ok, knifeLocal = pcall(function() return knife:FindFirstChild("KnifeLocal") end)
+				if ok and knifeLocal then
+					local cb = knifeLocal:FindFirstChild("CreateBeam")
+					if cb then
+						local rf = cb:FindFirstChildWhichIsA("RemoteFunction")
+						if rf then
+							CachedKnifeName = knife.Name
+							KnifeRemote = rf
+							return rf
 						end
 					end
-					KnifeRemoteCache[knife] = rems
-					return rems
 				end
 
-				-- Пробуем «удалённое убийство» через все найденные remote’ы (всё в pcall)
-				local function TryRemoteKill(knife, targetPart)
-					local anyFired = false
-					if not knife or not targetPart then return false end
-					local rems = CollectKnifeRemotes(knife)
-
-					for _, r in ipairs(rems) do
-						local ok = pcall(function()
-							if r:IsA("RemoteFunction") then
-								-- популярные сигнатуры (всё безопасно в pcall)
-								r:InvokeServer(1, targetPart.Position, "AH2")
-							else
-								r:FireServer(1, targetPart.Position, "AH2")
-							end
-						end)
-						anyFired = anyFired or ok
-						task.wait()
-						local hum = targetPart.Parent and targetPart.Parent:FindFirstChildOfClass("Humanoid")
-						if hum and hum.Health <= 0 then
-							return true
-						end
+				for _, d in ipairs(knife:GetDescendants()) do
+					if d:IsA("RemoteFunction") then
+						CachedKnifeName = knife.Name
+						KnifeRemote = d
+						return d
 					end
-
-					-- альтернативные сигнатуры
-					for _, r in ipairs(rems) do
-						local ok = pcall(function()
-							if r:IsA("RemoteFunction") then
-								r:InvokeServer(targetPart, targetPart.Position)
-							else
-								r:FireServer(targetPart, targetPart.Position)
-							end
-						end)
-						anyFired = anyFired or ok
-						task.wait()
-						local hum = targetPart.Parent and targetPart.Parent:FindFirstChildOfClass("Humanoid")
-						if hum and hum.Health <= 0 then
-							return true
-						end
-					end
-
-					return false
 				end
 
-				-- Безопасный быстрый микротп + спам удара и возврат назад
-				local function MeleeRush(knife, targetPart, maxTime)
-					local char = LP.Character
-					local root = GetRoot(char)
-					if not (char and root and knife and targetPart) then return false end
-					maxTime = maxTime or 0.25
+				return nil
+			end
 
-					local startCF = root.CFrame
+			--// Kill игрока
+			local function KillPlayer(plr)
+				if not IsAlive(plr) then return end
+				local part = GetPreferredPart(plr)
+				if not part then return end
 
-					-- локальный no-clip на время рывка
-					local noclip = true
-					local conn = RunService.Stepped:Connect(function()
-						if not noclip then return end
-						for _, p in ipairs(char:GetDescendants()) do
-							if p:IsA("BasePart") then
-								p.CanCollide = false
+				local rf = GetKnifeRemote()
+				if not rf then return end
+
+				-- вызываем так же как SilentAim
+				pcall(function()
+					rf:InvokeServer(1, part.Position, "AH2")
+				end)
+			end
+
+			--// Основной цикл KillAll
+			task.spawn(function()
+				while task.wait(0.2) do -- каждые 0.2 сек
+					if KillAllEnabled then
+						UpdateRoles()
+						for _, pl in ipairs(Players:GetPlayers()) do
+							if pl ~= LP and IsAlive(pl) then
+								local info = ROLES[pl.Name]
+								if info and (info.Role == "Innocent" or info.Role == "Sheriff" or info.Role == "Hero") then
+									KillPlayer(pl)
+									task.wait(0.1) -- мини задержка между убийствами
+								end
 							end
 						end
-					end)
+					end
+				end
+			end)
 
-					-- прыжок к цели (чуть сбоку/сверху, чтобы не застревать)
-					local tpos = targetPart.Position
-					root.CFrame = CFrame.new(tpos + Vector3.new(0, 1.2, 0))
+			--// Toggle UI
+			local Toggle = Tabs.CombatTab:Toggle({
+				Title = "KillAll",
+				Desc = "Убивает всех Innocent/Sheriff через Remote",
+				Default = false,
+				Callback = function(state)
+					KillAllEnabled = state
+					print("KillAll toggled: " .. tostring(state))
+				end
+			})
 
-					-- спам ударов
-					local t0 = tick()
-					local dead = false
-					while tick() - t0 < maxTime do
+
+			----KnifeAura---------------
+						--// Services
+					local Players = game:GetService("Players")
+					local RunService = game:GetService("RunService")
+
+					--// Locals
+					local LP = Players.LocalPlayer
+					local KnifeAuraEnabled = false
+					local KnifeAuraRadius = 15 -- стартовый радиус
+
+					-- ===== Utils =====
+					local function GetRoot(char)
+						if not char then return nil end
+						return char:FindFirstChild("HumanoidRootPart")
+							or char:FindFirstChild("UpperTorso")
+							or char:FindFirstChild("Torso")
+					end
+
+					local function IsAlive(plr)
+						if not plr or not plr.Character then return false end
+						local hum = plr.Character:FindFirstChildOfClass("Humanoid")
+						return hum and hum.Health > 0
+					end
+
+					local function EquipKnife()
+						local char = LP.Character
+						if not char then return nil end
+						local hum = char:FindFirstChildOfClass("Humanoid")
+						if not hum then return nil end
+
+						local knife = char:FindFirstChild("Knife") or LP.Backpack:FindFirstChild("Knife")
+						if not knife then return nil end
+
+						if knife.Parent == LP.Backpack then
+							hum:EquipTool(knife)
+							task.wait(0.05)
+						end
+						return knife
+					end
+
+					-- Атака цели (локально Knife:Activate() + Remote fallback)
+					local function AttackTarget(knife, targetPart)
+						if not knife or not targetPart then return end
 						pcall(function() knife:Activate() end)
-						local hum = targetPart.Parent and targetPart.Parent:FindFirstChildOfClass("Humanoid")
-						if hum and hum.Health <= 0 then
-							dead = true
-							break
-						end
-						task.wait(0.05)
-					end
-
-					-- возврат + полный сброс инерции
-					root.CFrame = startCF
-					for _, p in ipairs(char:GetDescendants()) do
-						if p:IsA("BasePart") then
-							p.AssemblyLinearVelocity = Vector3.new()
-							p.AssemblyAngularVelocity = Vector3.new()
+						for _, d in ipairs(knife:GetDescendants()) do
+							if d:IsA("RemoteEvent") then
+								pcall(function() d:FireServer(1, targetPart.Position, "AH2") end)
+							elseif d:IsA("RemoteFunction") then
+								pcall(function() d:InvokeServer(1, targetPart.Position, "AH2") end)
+							end
 						end
 					end
 
-					noclip = false
-					if conn then conn:Disconnect() end
-
-					return dead
-				end
-
-				-- Убить одного игрока (все способы)
-				local function KillOne(plr)
-					if not IsAlive(plr) then return end
-					if not RoleIsTarget(plr) then return end
-
-					local knife = EquipKnife()
-					if not knife then return end
-
-					local part = GetRoot(plr.Character) or plr.Character:FindFirstChild("Head")
-					if not part then return end
-
-					-- 1) пробуем remote-kill
-					if TryRemoteKill(knife, part) then
-						return
-					end
-
-					-- 2) если не сработало — делаем короткий рывок и спамим Activate()
-					MeleeRush(knife, part, 0.35)
-				end
-
-				-- Основной цикл
-				task.spawn(function()
-					-- ждём персонажа
-					if not LP.Character then LP.CharacterAdded:Wait() end
-					while task.wait(0.2) do
-						if KillAllEnabled then
-							UpdateRoles()
-							for _, pl in ipairs(Players:GetPlayers()) do
-								if pl ~= LP and IsAlive(pl) then
-									-- игнорируем шерифа/инно/героя только если включены роли
-									if RoleIsTarget(pl) then
-										KillOne(pl)
-										task.wait(0.05)
+					-- ===== Основной цикл ауры =====
+					task.spawn(function()
+						while task.wait(0.2) do
+							if KnifeAuraEnabled then
+								local knife = EquipKnife()
+								if knife then
+									local root = GetRoot(LP.Character)
+									if root then
+										for _, pl in ipairs(Players:GetPlayers()) do
+											if pl ~= LP and IsAlive(pl) then
+												local targetRoot = GetRoot(pl.Character)
+												if targetRoot and (targetRoot.Position - root.Position).Magnitude <= KnifeAuraRadius then
+													AttackTarget(knife, targetRoot)
+												end
+											end
+										end
 									end
 								end
 							end
 						end
-					end
-				end)
+					end)
 
-				-- UI Toggle
-				local Toggle = Tabs.CombatTab:Toggle({
-					Title = "KillAll",
-					Desc = "",
-					Default = false,
-					Callback = function(state)
-						KillAllEnabled = state
-						if state then
-							WindUI:Notify("KillAll", "On", 3)
-						else
-							WindUI:Notify("KillAll", "Off", 2)
+					-- UI Toggle
+					local Toggle = Tabs.CombatTab:Toggle({
+						Title = "Knife Aura",
+						Desc = "",
+						Default = false,
+						Callback = function(state)
+							KnifeAuraEnabled = state
 						end
-					end
-				})
+					})
 
-				
-
-				------ Knife Aura ------
-	
-
-	--// Services
-	local Players = game:GetService("Players")
-	local RunService = game:GetService("RunService")
-
-	--// Locals
-	local LP = Players.LocalPlayer
-	local KnifeAuraEnabled = false
-	local KnifeAuraRadius = 15 -- стартовый радиус
-
-	-- ===== Utils =====
-	local function GetRoot(char)
-		if not char then return nil end
-		return char:FindFirstChild("HumanoidRootPart")
-			or char:FindFirstChild("UpperTorso")
-			or char:FindFirstChild("Torso")
-	end
-
-	local function IsAlive(plr)
-		if not plr or not plr.Character then return false end
-		local hum = plr.Character:FindFirstChildOfClass("Humanoid")
-		return hum and hum.Health > 0
-	end
-
-	local function EquipKnife()
-		local char = LP.Character
-		if not char then return nil end
-		local hum = char:FindFirstChildOfClass("Humanoid")
-		if not hum then return nil end
-
-		local knife = char:FindFirstChild("Knife") or LP.Backpack:FindFirstChild("Knife")
-		if not knife then return nil end
-
-		if knife.Parent == LP.Backpack then
-			hum:EquipTool(knife)
-			task.wait(0.05)
-		end
-		return knife
-	end
-
-	-- Атака цели (локально Knife:Activate() + Remote fallback)
-	local function AttackTarget(knife, targetPart)
-		if not knife or not targetPart then return end
-		pcall(function() knife:Activate() end)
-		for _, d in ipairs(knife:GetDescendants()) do
-			if d:IsA("RemoteEvent") then
-				pcall(function() d:FireServer(1, targetPart.Position, "AH2") end)
-			elseif d:IsA("RemoteFunction") then
-				pcall(function() d:InvokeServer(1, targetPart.Position, "AH2") end)
-			end
-		end
-	end
-
-	-- ===== Основной цикл ауры =====
-	task.spawn(function()
-		while task.wait(0.2) do
-			if KnifeAuraEnabled then
-				local knife = EquipKnife()
-				if knife then
-					local root = GetRoot(LP.Character)
-					if root then
-						for _, pl in ipairs(Players:GetPlayers()) do
-							if pl ~= LP and IsAlive(pl) then
-								local targetRoot = GetRoot(pl.Character)
-								if targetRoot and (targetRoot.Position - root.Position).Magnitude <= KnifeAuraRadius then
-									AttackTarget(knife, targetRoot)
-								end
-							end
+					-- UI Slider (радиус)
+					local Slider = Tabs.CombatTab:Slider({
+						Title = "Aura Radius",
+						Step = 1,
+						Desc = "",
+						Value = {
+							Min = 10,
+							Max = 100,
+							Default = 15,
+						},
+						Callback = function(val)
+							KnifeAuraRadius = val
 						end
-					end
-				end
-			end
-		end
-	end)
-
-	-- UI Toggle
-	local Toggle = Tabs.CombatTab:Toggle({
-		Title = "Knife Aura",
-		Desc = "",
-		Default = false,
-		Callback = function(state)
-			KnifeAuraEnabled = state
-		end
-	})
-
-	-- UI Slider (радиус)
-	local Slider = Tabs.CombatTab:Slider({
-		Title = "Aura Radius",
-		Step = 1,
-		Desc = "",
-		Value = {
-			Min = 10,
-			Max = 100,
-			Default = 15,
-		},
-		Callback = function(val)
-			KnifeAuraRadius = val
-		end
-	})
-
-	--
+					})
 
 
 					
@@ -1833,14 +1711,6 @@ end
 		local FlingActive = false
 		getgenv().OldPos = nil
 		getgenv().FPDH = workspace.FallenPartsDestroyHeight
-
-		-- утилита для корня
-		local function getRoot(char)
-			if not char then return nil end
-			return char:FindFirstChild("HumanoidRootPart")
-				or char:FindFirstChild("Torso")
-				or char:FindFirstChild("UpperTorso")
-		end
 
 		-- === Обновление списка игроков ===
 		local function updateTrollingPlayers()
@@ -1890,18 +1760,18 @@ end
 		local function SkidFling(TargetPlayer)
 			local Character = LocalPlayer.Character
 			local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-			local RootPart = getRoot(Character)
+			local RootPart = Humanoid and Humanoid.RootPart
 			local TCharacter = TargetPlayer and TargetPlayer.Character
 			if not TCharacter then return end
 
 			local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
-			local TRootPart = getRoot(TCharacter)
+			local TRootPart = THumanoid and THumanoid.RootPart
 			local THead = TCharacter:FindFirstChild("Head")
 			local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
 			local Handle = Accessory and Accessory:FindFirstChild("Handle")
 
 			if Character and Humanoid and RootPart then
-				if RootPart.AssemblyLinearVelocity.Magnitude < 50 then
+				if RootPart.Velocity.Magnitude < 50 then
 					getgenv().OldPos = RootPart.CFrame
 				end
 
@@ -1909,7 +1779,7 @@ end
 					return Message("Error", TargetPlayer.Name .. " is sitting", 2)
 				end
 
-				-- камера на цель
+				-- Камера
 				if THead then
 					workspace.CurrentCamera.CameraSubject = THead
 				elseif Handle then
@@ -1920,68 +1790,63 @@ end
 
 				if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
 
-				-- телепорт + импульс (обновлено: используем Assembly*Velocity)
 				local FPos = function(BasePart, Pos, Ang)
-					local cf = CFrame.new(BasePart.Position) * Pos * Ang
-					RootPart.CFrame = cf
-					-- гарантируем что PrimaryPart есть
-					if not Character.PrimaryPart then
-						pcall(function() Character.PrimaryPart = RootPart end)
-					end
-					Character:SetPrimaryPartCFrame(cf)
-					RootPart.AssemblyLinearVelocity = Vector3.new(9e7, 9e7 * 10, 9e7)
-					RootPart.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
+					RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+					Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+					RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+					RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
 				end
 
-				-- === ТВОЯ ОСНОВНАЯ ЛОГИКА — БЕЗ ИЗМЕНЕНИЙ ===
 				local SFBasePart = function(BasePart)
-					local TimeToWait = 2
-					local Time = tick()
-					local Angle = 0
-					repeat
-						if RootPart and THumanoid then
-							if BasePart.Velocity.Magnitude < 50 then
-								Angle = Angle + 100
-								FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-								task.wait()
-							else
-								FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-								task.wait()
-								
-								FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-								task.wait()
-								FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-								task.wait()
-							end
-						end
-					until Time + TimeToWait < tick() or not FlingActive
-				end
+                local TimeToWait = 2
+                local Time = tick()
+                local Angle = 0
+                repeat
+                    if RootPart and THumanoid then
+                        if BasePart.Velocity.Magnitude < 50 then
+                            Angle = Angle + 100
+                            FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                            task.wait()
+                        else
+                            FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                            task.wait()
+                            
+                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                            task.wait()
+                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                            task.wait()
+                        end
+                    end
+                until Time + TimeToWait < tick() or not FlingActive
+            end
 
-				-- подготовка
-				workspace.FallenPartsDestroyHeight = 0/0 -- NaN, «антикилл»
+				workspace.FallenPartsDestroyHeight = math.huge
+
+				local BV = Instance.new("BodyVelocity")
+				BV.Parent = RootPart
+				BV.Velocity = Vector3.new(0, 0, 0)
+				BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
 				Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-				local oldAutoRotate = Humanoid.AutoRotate
-				Humanoid.AutoRotate = false
 
-				-- выбираем часть цели
 				if TRootPart then
 					SFBasePart(TRootPart)
 				elseif THead then
@@ -1989,35 +1854,27 @@ end
 				elseif Handle then
 					SFBasePart(Handle)
 				else
-					-- фэйл-сейф: вернуть настройки
-					Humanoid.AutoRotate = oldAutoRotate
-					Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-					workspace.CurrentCamera.CameraSubject = Humanoid
-					workspace.FallenPartsDestroyHeight = getgenv().FPDH
 					return Message("Error", TargetPlayer.Name .. " has no valid parts", 2)
 				end
 
-				-- завершение
+				BV:Destroy()
 				Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-				Humanoid.AutoRotate = oldAutoRotate
 				workspace.CurrentCamera.CameraSubject = Humanoid
 
-				-- возврат на старую позицию и полный сброс инерции
 				if getgenv().OldPos then
-					local targetCF = getgenv().OldPos * CFrame.new(0, .5, 0)
-					RootPart.CFrame = targetCF
-					Character:SetPrimaryPartCFrame(targetCF)
-					Humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-
-					for _, part in ipairs(Character:GetDescendants()) do
-						if part:IsA("BasePart") then
-							part.AssemblyLinearVelocity = Vector3.new()
-							part.AssemblyAngularVelocity = Vector3.new()
+					repeat
+						RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
+						Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+						Humanoid:ChangeState("GettingUp")
+						for _, part in pairs(Character:GetChildren()) do
+							if part:IsA("BasePart") then
+								part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+							end
 						end
-					end
+						task.wait()
+					until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+					workspace.FallenPartsDestroyHeight = getgenv().FPDH
 				end
-
-				workspace.FallenPartsDestroyHeight = getgenv().FPDH
 			else
 				return Message("Error", "Your character is not ready", 2)
 			end
@@ -2107,10 +1964,6 @@ end
 
 
 
-
-
-
-
 	end
 
 
@@ -2119,272 +1972,267 @@ end
 			--------------AutoFarmTab---------------
 
 	do
-			--// AutoFarm System with new UI assets
-		local Section = Tabs.AutoFarmTab:Section({ 
-			Title = "AutoFarm",
-			TextXAlignment = "Left",
-			TextSize = 17, -- Default Size
-		})
+        --// AutoFarm System (Mobile Adapted)
+        local Section = Tabs.AutoFarmTab:Section({ 
+            Title = "AutoFarm (Mobile)",
+            TextXAlignment = "Left",
+            TextSize = 17,
+        })
 
-			local Players = game:GetService("Players")
-			local Workspace = game:GetService("Workspace")
-			local LP = Players.LocalPlayer
+        local Players = game:GetService("Players")
+        local Workspace = game:GetService("Workspace")
+        local LP = Players.LocalPlayer
 
-			-- Переменные
-			local AutoFarmRunning = false
-			local SmoothSaveMode = false
-			local Mode = "Smooth"
-			local TeleportDelay = 3
-			local SmoothSpeed = 25
-			local SpawnCFrame = CFrame.new(112.961197, 140.252960, 46.383835)
+        -- Переменные
+        local AutoFarmRunning = false
+        local SmoothSaveMode = false
+        local Mode = "Smooth"
+        local TeleportDelay = 3
+        local SmoothSpeed = 25
+        local SpawnCFrame = CFrame.new(112.961197, 140.252960, 46.383835)
 
-			-- Карты
-			local Maps = {
-				"Factory","Hospital3","MilBase","House2","Workplace","Mansion2",
-				"BioLab","Hotel","Bank2","PoliceStation","ResearchFacility",
-				"Lobby","BeachResort", "Yacht", "Office3"
-			}
+        -- Карты
+        local Maps = {
+            "Factory","Hospital3","MilBase","House2","Workplace","Mansion2",
+            "BioLab","Hotel","Bank2","PoliceStation","ResearchFacility",
+            "Lobby","BeachResort","Yacht","Office3"
+        }
 
-			-- Проверка: монета доступна
-			local function IsCollectableCoin(part)
-				return part:FindFirstChild("TouchInterest") ~= nil
-			end
+        -- Проверка: монета доступна
+        local function IsCollectableCoin(part)
+            return part:FindFirstChild("TouchInterest") ~= nil
+        end
 
-			-- Поиск ближайшей монеты
-			local function GetClosestCoin()
-				if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return nil end
-				local hrp = LP.Character.HumanoidRootPart
-				local closest, bestDist = nil, math.huge
+        -- Поиск ближайшей монеты
+        local function GetClosestCoin()
+            if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return nil end
+            local hrp = LP.Character.HumanoidRootPart
+            local closest, bestDist = nil, math.huge
 
-				for _, mapName in ipairs(Maps) do
-					local map = Workspace:FindFirstChild(mapName)
-					if map and map:FindFirstChild("CoinContainer") then
-						for _, coin in ipairs(map.CoinContainer:GetChildren()) do
-							if IsCollectableCoin(coin) then
-								local pos = coin.Position
-								local dist = (hrp.Position - pos).Magnitude
-								if dist < bestDist then
-									bestDist = dist
-									closest = coin
-								end
-							end
-						end
-					end
-				end
-				return closest
-			end
+            for _, mapName in ipairs(Maps) do
+                local map = Workspace:FindFirstChild(mapName)
+                if map and map:FindFirstChild("CoinContainer") then
+                    for _, coin in ipairs(map.CoinContainer:GetChildren()) do
+                        if IsCollectableCoin(coin) then
+                            local pos = coin.Position
+                            local dist = (hrp.Position - pos).Magnitude
+                            if dist < bestDist then
+                                bestDist = dist
+                                closest = coin
+                            end
+                        end
+                    end
+                end
+            end
+            return closest
+        end
 
-			-- Проверка: виден ли мешок (разрешено ли фармить)
-			local function IsCoinBagVisible()
-				local gui = LP:FindFirstChild("PlayerGui")
-				if not gui then return false end
+        -- ✅ Проверка: виден ли мешок (адаптировано для телефона)
+        local function IsCoinBagVisible()
+            local gui = LP:FindFirstChild("PlayerGui")
+            if not gui then return false end
 
-				local beachBall = gui:FindFirstChild("MainGUI", true)
-					and gui.MainGUI:FindFirstChild("Game", true)
-					and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
-					and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
-					and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall")
+            local icon = gui:FindFirstChild("MainGUI", true)
+                and gui.MainGUI:FindFirstChild("Game", true)
+                and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
+                and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
+                and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
+                and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("CurrencyFrame", true)
+                and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame:FindFirstChild("Icon")
 
-				return beachBall and beachBall.Visible
-			end
+            return icon and icon.Visible
+        end
 
-			-- Проверка: мешок заполнен
-			local function IsBagFull()
-				local gui = LP:FindFirstChild("PlayerGui")
-				if not gui then return false end
+        -- Проверка: мешок заполнен
+        local function IsBagFull()
+            local gui = LP:FindFirstChild("PlayerGui")
+            if not gui then return false end
 
-				local fullLabel = gui:FindFirstChild("MainGUI", true)
-					and gui.MainGUI:FindFirstChild("Game", true)
-					and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
-					and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
-					and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
-					and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("Full")
+            local fullLabel = gui:FindFirstChild("MainGUI", true)
+                and gui.MainGUI:FindFirstChild("Game", true)
+                and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
+                and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
+                and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
+                and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("Full")
 
-				return fullLabel and fullLabel.Visible
-			end
+            return fullLabel and fullLabel.Visible
+        end
 
-			-- Суицид
-			local function KillPlayer()
-				local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-				if hum then hum.Health = 0 end
-			end
+        -- Суицид
+        local function KillPlayer()
+            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum.Health = 0 end
+        end
 
-			-- Teleport режим
-			local function TeleportFarm()
-				local coin = GetClosestCoin()
-				if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-					local pos = coin.Position
-					LP.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
-					task.wait(0.3)
-					LP.Character.HumanoidRootPart.CFrame = SpawnCFrame
-				end
-			end
+        -- Teleport режим
+        local function TeleportFarm()
+            local coin = GetClosestCoin()
+            if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                local pos = coin.Position
+                LP.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
+                task.wait(0.3)
+                LP.Character.HumanoidRootPart.CFrame = SpawnCFrame
+            end
+        end
 
-			-- Smooth режим
-			local function SmoothFarm()
-				local coin = GetClosestCoin()
-				if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-					local pos = coin.Position
-					local hrp = LP.Character.HumanoidRootPart
-					local dist = (pos - hrp.Position).Magnitude
-					if dist > 0 then
-						local totalTime = dist / SmoothSpeed
-						local start = tick()
-						local startPos = hrp.Position
-						while tick() - start < totalTime do
-							if not AutoFarmRunning or not IsCoinBagVisible() then return end
-							local alpha = (tick() - start) / totalTime
-							local interpolated = startPos:Lerp(pos, alpha)
+        -- Smooth режим
+        local function SmoothFarm()
+            local coin = GetClosestCoin()
+            if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                local pos = coin.Position
+                local hrp = LP.Character.HumanoidRootPart
+                local dist = (pos - hrp.Position).Magnitude
+                if dist > 0 then
+                    local totalTime = dist / SmoothSpeed
+                    local start = tick()
+                    local startPos = hrp.Position
+                    while tick() - start < totalTime do
+                        if not AutoFarmRunning or not IsCoinBagVisible() then return end
+                        local alpha = (tick() - start) / totalTime
+                        local interpolated = startPos:Lerp(pos, alpha)
 
-							if SmoothSaveMode then
-								interpolated = interpolated - Vector3.new(0, 2.5, 0)
-								hrp.CFrame = CFrame.new(interpolated) * CFrame.Angles(math.rad(90), 0, 0)
-							else
-								hrp.CFrame = CFrame.new(interpolated)
-							end
-							task.wait(0.015)
-						end
-					end
-				end
-			end
+                        if SmoothSaveMode then
+                            interpolated = interpolated - Vector3.new(0, 2.5, 0)
+                            hrp.CFrame = CFrame.new(interpolated) * CFrame.Angles(math.rad(90), 0, 0)
+                        else
+                            hrp.CFrame = CFrame.new(interpolated)
+                        end
+                        task.wait(0.015)
+                    end
+                end
+            end
+        end
 
-			-- Главный цикл
-			task.spawn(function()
-				while true do
-					task.wait(0.8)
+        -- Главный цикл
+        task.spawn(function()
+            while true do
+                task.wait(0.8)
 
-					if AutoFarmRunning then
-						if not IsCoinBagVisible() then continue end
-						if IsBagFull() then
-							KillPlayer()
-							continue
-						end
-						if Mode == "Teleport" then
-							task.wait(TeleportDelay)
-							TeleportFarm()
-						else
-							SmoothFarm()
-						end
-					end
-				end
-			end)
+                if AutoFarmRunning then
+                    if not IsCoinBagVisible() then continue end
+                    if IsBagFull() then
+                        KillPlayer()
+                        continue
+                    end
+                    if Mode == "Teleport" then
+                        task.wait(TeleportDelay)
+                        TeleportFarm()
+                    else
+                        SmoothFarm()
+                    end
+                end
+            end
+        end)
 
-			-- === UI через новые ассеты ===
+        -- === UI ===
 
-			-- Dropdown: выбор режима
-			local DropdownMode = Tabs.AutoFarmTab:Dropdown({
-				Title = "AutoFarm Mode",
-				Values = { "Smooth", "Teleport" },
-				Value = "Smooth",
-				Callback = function(option)
-					Mode = option
-					print("Mode:", option)
-				end
-			})
+        local DropdownMode = Tabs.AutoFarmTab:Dropdown({
+            Title = "AutoFarm Mode",
+            Values = { "Smooth", "Teleport" },
+            Value = "Smooth",
+            Callback = function(option)
+                Mode = option
+            end
+        })
 
-			-- Slider: TeleportDelay
-			local SliderTeleport = Tabs.AutoFarmTab:Slider({
-				Title = "Teleport Delay",
-				Step = 0.1,
-				Value = { Min = 0.5, Max = 5, Default = TeleportDelay },
-				Callback = function(value)
-					TeleportDelay = value
-				end
-			})
+        local SliderTeleport = Tabs.AutoFarmTab:Slider({
+            Title = "Teleport Delay",
+            Step = 0.1,
+            Value = { Min = 0.5, Max = 5, Default = TeleportDelay },
+            Callback = function(value)
+                TeleportDelay = value
+            end
+        })
 
-			-- Slider: SmoothSpeed
-			local SliderSmooth = Tabs.AutoFarmTab:Slider({
-				Title = "Smooth Speed",
-				Step = 1,
-				Value = { Min = 20, Max = 100, Default = SmoothSpeed },
-				Callback = function(value)
-					SmoothSpeed = value
-				end
-			})
+        local SliderSmooth = Tabs.AutoFarmTab:Slider({
+            Title = "Smooth Speed",
+            Step = 1,
+            Value = { Min = 20, Max = 100, Default = SmoothSpeed },
+            Callback = function(value)
+                SmoothSpeed = value
+            end
+        })
 
-			-- Toggle: включение фарма
-			local ToggleAutoFarm = Tabs.AutoFarmTab:Toggle({
-				Title = "Enable AutoFarm",
-				Default = false,
-				Callback = function(state)
-					AutoFarmRunning = state
-					print("AutoFarm:", state)
-				end
-			})
+        local ToggleAutoFarm = Tabs.AutoFarmTab:Toggle({
+            Title = "Enable AutoFarm",
+            Default = false,
+            Callback = function(state)
+                AutoFarmRunning = state
+            end
+        })
 
-			-- Toggle: Safe Mode
-			local ToggleSmoothSave = Tabs.AutoFarmTab:Toggle({
-				Title = "Smooth Save Mode",
-				Default = false,
-				Callback = function(state)
-					SmoothSaveMode = state
-				end
-			})
+        local ToggleSmoothSave = Tabs.AutoFarmTab:Toggle({
+            Title = "Smooth Save Mode",
+            Default = false,
+            Callback = function(state)
+                SmoothSaveMode = state
+            end
+        })
 
-			-- Coin ESP (отображение монет)
-			local function getAllCoins()
-				local coins = {}
-				for _, mapName in ipairs(Maps) do
-					local map = Workspace:FindFirstChild(mapName)
-					if map and map:FindFirstChild("CoinContainer") then
-						for _, child in ipairs(map.CoinContainer:GetChildren()) do
-							if child:IsA("BasePart") and child:FindFirstChildWhichIsA("TouchTransmitter") then
-								table.insert(coins, child)
-							end
-						end
-					end
-				end
-				return coins
-			end
+        -- Coin ESP
+        local function getAllCoins()
+            local coins = {}
+            for _, mapName in ipairs(Maps) do
+                local map = Workspace:FindFirstChild(mapName)
+                if map and map:FindFirstChild("CoinContainer") then
+                    for _, child in ipairs(map.CoinContainer:GetChildren()) do
+                        if child:IsA("BasePart") and child:FindFirstChildWhichIsA("TouchTransmitter") then
+                            table.insert(coins, child)
+                        end
+                    end
+                end
+            end
+            return coins
+        end
 
-			local function clearBoxes()
-				for _, adorn in pairs(game:GetService("CoreGui"):GetChildren()) do
-					if adorn:IsA("BoxHandleAdornment") and adorn.Name == "CoinESP" then
-						adorn:Destroy()
-					end
-				end
-			end
+        local function clearBoxes()
+            for _, adorn in pairs(game:GetService("CoreGui"):GetChildren()) do
+                if adorn:IsA("BoxHandleAdornment") and adorn.Name == "CoinESP" then
+                    adorn:Destroy()
+                end
+            end
+        end
 
-			local function showBoxes()
-				clearBoxes()
-				for _, coin in pairs(getAllCoins()) do
-					local box = Instance.new("BoxHandleAdornment")
-					box.Name = "CoinESP"
-					box.Adornee = coin
-					box.AlwaysOnTop = true
-					box.ZIndex = 10
-					box.Size = coin.Size
-					box.Color3 = Color3.fromRGB(255, 215, 0)
-					box.Transparency = 0.3
-					box.Parent = game:GetService("CoreGui")
-				end
-			end
+        local function showBoxes()
+            clearBoxes()
+            for _, coin in pairs(getAllCoins()) do
+                local box = Instance.new("BoxHandleAdornment")
+                box.Name = "CoinESP"
+                box.Adornee = coin
+                box.AlwaysOnTop = true
+                box.ZIndex = 10
+                box.Size = coin.Size
+                box.Color3 = Color3.fromRGB(255, 215, 0)
+                box.Transparency = 0.3
+                box.Parent = game:GetService("CoreGui")
+            end
+        end
 
-			local isESP = false
-			local function startCoinESP()
-				if isESP then return end
-				isESP = true
-				task.spawn(function()
-					while isESP do
-						showBoxes()
-						task.wait(1.2)
-					end
-				end)
-			end
+        local isESP = false
+        local function startCoinESP()
+            if isESP then return end
+            isESP = true
+            task.spawn(function()
+                while isESP do
+                    showBoxes()
+                    task.wait(1.2)
+                end
+            end)
+        end
 
-			local function stopCoinESP()
-				isESP = false
-				clearBoxes()
-			end
+        local function stopCoinESP()
+            isESP = false
+            clearBoxes()
+        end
 
-			-- Toggle: ESP
-			local ToggleESP = Tabs.AutoFarmTab:Toggle({
-				Title = "Show Coins ESP",
-				Default = false,
-				Callback = function(state)
-					if state then startCoinESP() else stopCoinESP() end
-				end
-			})
+        local ToggleESP = Tabs.AutoFarmTab:Toggle({
+            Title = "Show Coins ESP",
+            Default = false,
+            Callback = function(state)
+                if state then startCoinESP() else stopCoinESP() end
+            end
+        })
+
 
 
 	end
@@ -2952,7 +2800,8 @@ end
 
 
 
-
 end
 
+
 loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKota/Pluty-Hub/refs/heads/main/qwerty.lua"))()
+
