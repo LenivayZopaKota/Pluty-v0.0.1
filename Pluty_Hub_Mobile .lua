@@ -2803,5 +2803,5 @@ end
 end
 
 
-loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKota/Pluty-Hub/refs/heads/main/qwerty.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKotaWork/Pluty-Hub/refs/heads/main/Mobile%20qwerty.lua"))()
 
