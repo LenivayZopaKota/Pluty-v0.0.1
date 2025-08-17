@@ -89,259 +89,7 @@ do
 	
 	-- Shot button (fixed, mobile-friendly, non-destructive)
 	do
-		local Players = game:GetService("Players")
-		local ReplicatedStorage = game:GetService("ReplicatedStorage")
-		local UserInputService = game:GetService("UserInputService")
-		local TweenService = game:GetService("TweenService")
-		local LP = Players.LocalPlayer
-
-		local SHOT_GUI_NAME = "ShotMurderGui_v2" -- уникальное имя, чтобы не конфликтовать
-		local shotButtonFrame, shotButton = nil, nil
-		local shotButtonActive = false
-		local buttonSize = 60
-		local lastNotifyAt = 0
-		local NOTIFY_COOLDOWN = 1.5 -- секунды между уведомлениями
-
-		local function safeNotify(tbl)
-			-- tbl = { Title=..., Content=..., Icon=..., Duration=... }
-			if tick() - lastNotifyAt < NOTIFY_COOLDOWN then return end
-			lastNotifyAt = tick()
-			pcall(function() WindUI:Notify(tbl) end)
-		end
-
-		local function findKnifeRemote(gun)
-			if not gun then return nil end
-			-- Сначала по ожидаемой структуре
-			local ok, knifeLocal = pcall(function() return gun:FindFirstChild("KnifeLocal") end)
-			if ok and knifeLocal then
-				local cb = knifeLocal:FindFirstChild("CreateBeam")
-				if cb then
-					local rf = cb:FindFirstChildWhichIsA("RemoteFunction")
-					if rf then return rf end
-				end
-			end
-			-- Ищем первый RemoteFunction/RemoteEvent в потомках с подходящим именем
-			for _, d in ipairs(gun:GetDescendants()) do
-				if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
-					local name = (d.Name or ""):lower()
-					if name:find("create") or name:find("beam") or name:find("knife") or name:find("fire") then
-						return d
-					end
-				end
-			end
-			-- fallback — первый найденный
-			for _, d in ipairs(gun:GetDescendants()) do
-				if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
-					return d
-				end
-			end
-			return nil
-		end
-
-		local function getMurdererFromServer()
-			local rf = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
-			if not rf then return nil end
-			local ok, data = pcall(function() return rf:InvokeServer() end)
-			if not ok or type(data) ~= "table" then return nil end
-			for name, info in pairs(data) do
-				if info and info.Role == "Murderer" then
-					return Players:FindFirstChild(name)
-				end
-			end
-			return nil
-		end
-
-		local function performShotAction()
-			-- анимация нажатия и реальный вызов ремота (в pcall)
-			if not LP.Character or not LP.Character:FindFirstChildOfClass("Humanoid") then return end
-
-			local murderer = getMurdererFromServer()
-			if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
-				safeNotify({ Title = "Sheriff", Content = "Murderer not found", Icon = "x", Duration = 2 })
-				return
-			end
-
-			-- берем Gun (если есть), пытаемся найти Remote и вызвать
-			local gun = LP.Character:FindFirstChild("Gun") or LP.Backpack:FindFirstChild("Gun")
-			if not gun then
-				safeNotify({ Title = "Sheriff", Content = "No gun found", Icon = "x", Duration = 2 })
-				return
-			end
-
-			-- эквипим, если в рюкзаке
-			if gun.Parent ~= LP.Character then
-				pcall(function() gun.Parent = LP.Character end)
-				task.wait(0.02)
-			end
-
-			local targetPart = murderer.Character:FindFirstChild("HumanoidRootPart")
-			if not targetPart then return end
-
-			local remote = findKnifeRemote(gun)
-			if remote then
-				pcall(function()
-					if remote:IsA("RemoteFunction") then
-						remote:InvokeServer(10, targetPart.Position, "AH2")
-					else
-						remote:FireServer(10, targetPart.Position, "AH2")
-					end
-				end)
-				safeNotify({ Title = "Sheriff", Content = "Shot invoked", Icon = "check-circle", Duration = 1.2 })
-				return
-			end
-
-			-- fallback: если ремота нет, просто вызываем Activate на инструменте (локально)
-			pcall(function() 
-				if typeof(gun.Activate) == "function" then 
-					gun:Activate() 
-				elseif gun:FindFirstChild("KnifeLocal") then 
-					local ok, cl = pcall(function() return gun.KnifeLocal.CreateBeam.RemoteFunction end)
-					if ok and cl then pcall(function() cl:InvokeServer(10, targetPart.Position, "AH2") end) end
-				end
-			end)
-			safeNotify({ Title = "Sheriff", Content = "Shot (fallback) attempted", Icon = "check-circle", Duration = 1.2 })
-		end
-
-		local function clampToViewport(x, y, guiSize)
-			local vx, vy = guiSize.X, guiSize.Y
-			x = math.clamp(x, 0, vx - buttonSize)
-			y = math.clamp(y, 0, vy - buttonSize)
-			return x, y
-		end
-
-		local function CreateShotButton()
-			if shotButtonActive then return end
-			local playerGui = LP:WaitForChild("PlayerGui")
-
-			-- Если уже есть — используем, иначе создаём чистый ScreenGui в PlayerGui
-			local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
-			if not screenGui then
-				screenGui = Instance.new("ScreenGui")
-				screenGui.Name = SHOT_GUI_NAME
-				screenGui.ResetOnSpawn = false
-				screenGui.IgnoreGuiInset = false
-				screenGui.Parent = playerGui
-				-- DisplayOrder небольшой, чтобы не мешать другим UI
-				screenGui.DisplayOrder = 50
-			end
-
-			shotButtonFrame = Instance.new("Frame")
-			shotButtonFrame.Name = "ShotButtonFrame"
-			shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-			shotButtonFrame.Position = UDim2.new(1, -buttonSize - 20, 0.5, -buttonSize/2)
-			shotButtonFrame.AnchorPoint = Vector2.new(1, 0.5)
-			shotButtonFrame.BackgroundTransparency = 1
-			shotButtonFrame.ZIndex = 100
-			shotButtonFrame.Parent = screenGui
-
-			-- тень (не перекрывающая всё)
-			local shadow = Instance.new("ImageLabel")
-			shadow.Name = "Shadow"
-			shadow.Size = UDim2.new(1.2, 0, 1.2, 0)
-			shadow.Position = UDim2.new(0.5, 0, 0.5, 6)
-			shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-			shadow.BackgroundTransparency = 1
-			shadow.Image = "rbxassetid://1316045217"
-			shadow.ImageColor3 = Color3.new(0,0,0)
-			shadow.ImageTransparency = 0.75
-			shadow.ScaleType = Enum.ScaleType.Slice
-			shadow.SliceCenter = Rect.new(10,10,118,118)
-			shadow.ZIndex = 99
-			shadow.Parent = shotButtonFrame
-
-			shotButton = Instance.new("TextButton")
-			shotButton.Name = "SheriffShotButton"
-			shotButton.Size = UDim2.new(1, 0, 1, 0)
-			shotButton.Position = UDim2.new(0, 0, 0, 0)
-			shotButton.BackgroundColor3 = Color3.fromRGB(20, 22, 25)
-			shotButton.BackgroundTransparency = 0
-			shotButton.Text = "⚡"
-			shotButton.TextColor3 = Color3.fromRGB(255,255,255)
-			shotButton.TextSize = 26
-			shotButton.Font = Enum.Font.GothamBold
-			shotButton.BorderSizePixel = 0
-			shotButton.ZIndex = 101
-			shotButton.AutoButtonColor = false
-			shotButton.TextScaled = true
-			shotButton.Parent = shotButtonFrame
-
-			-- круглая форма
-			local corner = Instance.new("UICorner")
-			corner.CornerRadius = UDim.new(1, 0)
-			corner.Parent = shotButton
-
-			-- тонкий ободок
-			local stroke = Instance.new("UIStroke")
-			stroke.Thickness = 2
-			stroke.Color = Color3.fromRGB(0, 120, 255)
-			stroke.Transparency = 0.25
-			stroke.Parent = shotButton
-
-			-- градиент
-			local gradient = Instance.new("UIGradient")
-			gradient.Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(0,160,255)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(0,220,140))
-			})
-			gradient.Rotation = 45
-			gradient.Parent = shotButton
-
-			-- Анимация нажатия
-			local function animatePress()
-				local down = TweenService:Create(shotButton, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {Size = UDim2.new(0.92,0,0.92,0), BackgroundTransparency = 0.05})
-				local up = TweenService:Create(shotButton, TweenInfo.new(0.18, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 0})
-				down:Play(); down.Completed:Wait(); up:Play()
-			end
-
-			shotButton.MouseButton1Click:Connect(function()
-				animatePress()
-				performShotAction()
-			end)
-
-			-- Drag (поддерживает мышь и тач)
-			local dragging = false
-			local dragStartPos, startPos = nil, nil
-			shotButton.InputBegan:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-					dragging = true
-					dragStartPos = input.Position
-					startPos = shotButtonFrame.Position
-					input.Changed:Connect(function()
-						if input.UserInputState == Enum.UserInputState.End then
-							dragging = false
-						end
-					end)
-				end
-			end)
-			shotButton.InputChanged:Connect(function(input)
-				if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-					local delta = input.Position - dragStartPos
-					-- получаем viewport size (работает и на мобильных)
-					local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720)
-					local sx = (startPos.X.Offset + delta.X)
-					local sy = (startPos.Y.Offset + delta.Y)
-					sx, sy = clampToViewport(sx, sy, vs)
-					shotButtonFrame.Position = UDim2.new(0, sx, 0, sy)
-				end
-			end)
-
-			shotButtonActive = true
-			safeNotify({ Title = "Sheriff System", Content = "Shot button activated", Icon = "check-circle", Duration = 2 })
-		end
-
-		local function RemoveShotButton()
-			if not shotButtonActive then return end
-			local playerGui = LP:FindFirstChild("PlayerGui")
-			if playerGui then
-				local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
-				if screenGui then
-					screenGui:Destroy()
-				end
-			end
-			shotButtonFrame, shotButton = nil, nil
-			shotButtonActive = false
-			safeNotify({ Title = "Sheriff System", Content = "Shot button removed", Icon = "x", Duration = 1.2 })
-		end
+		
 
 		
 		
@@ -1713,151 +1461,299 @@ do
 				end)
 			end
 
-
 			-----Button Shot Murder(Silent Aim)---------
-
-
+			
+	do
 		Tabs.CombatTab:Section({
 			Title = gradient("Shot Button", Color3.fromHex("#001e80"), Color3.fromHex("#16f2d9"))
 		})
 
-			local shotButton = nil
-			local shotButtonFrame = nil
-			local shotButtonActive = false
-			local shotType = "Default"
-			local buttonSize = 50
 
-			-- ✅ Функция для создания кнопки
-			local function CreateShotButton()
-				if shotButton then return end
+		local Players = game:GetService("Players")
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		local UserInputService = game:GetService("UserInputService")
+		local TweenService = game:GetService("TweenService")
+		local LP = Players.LocalPlayer
 
-				local screenGui = game:GetService("CoreGui"):FindFirstChild("WindUI_SheriffGui")
-				if not screenGui then
-					screenGui = Instance.new("ScreenGui")
-					screenGui.Name = "WindUI_SheriffGui"
-					screenGui.Parent = game:GetService("CoreGui")
-					screenGui.ResetOnSpawn = false
-					screenGui.DisplayOrder = 999
-					screenGui.IgnoreGuiInset = true
+		local SHOT_GUI_NAME = "ShotMurderGui_v2" -- уникальное имя, чтобы не конфликтовать
+		local shotButtonFrame, shotButton = nil, nil
+		local shotButtonActive = false
+		local buttonSize = 60
+		local lastNotifyAt = 0
+		local NOTIFY_COOLDOWN = 1.5 -- секунды между уведомлениями
+
+		local function safeNotify(tbl)
+			-- tbl = { Title=..., Content=..., Icon=..., Duration=... }
+			if tick() - lastNotifyAt < NOTIFY_COOLDOWN then return end
+			lastNotifyAt = tick()
+			pcall(function() WindUI:Notify(tbl) end)
+		end
+
+		local function findKnifeRemote(gun)
+			if not gun then return nil end
+			-- Сначала по ожидаемой структуре
+			local ok, knifeLocal = pcall(function() return gun:FindFirstChild("KnifeLocal") end)
+			if ok and knifeLocal then
+				local cb = knifeLocal:FindFirstChild("CreateBeam")
+				if cb then
+					local rf = cb:FindFirstChildWhichIsA("RemoteFunction")
+					if rf then return rf end
 				end
+			end
+			-- Ищем первый RemoteFunction/RemoteEvent в потомках с подходящим именем
+			for _, d in ipairs(gun:GetDescendants()) do
+				if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
+					local name = (d.Name or ""):lower()
+					if name:find("create") or name:find("beam") or name:find("knife") or name:find("fire") then
+						return d
+					end
+				end
+			end
+			-- fallback — первый найденный
+			for _, d in ipairs(gun:GetDescendants()) do
+				if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
+					return d
+				end
+			end
+			return nil
+		end
 
-				shotButtonFrame = Instance.new("Frame")
-				shotButtonFrame.Name = "ShotButtonFrame"
-				shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-				shotButtonFrame.Position = UDim2.new(1, -buttonSize - 20, 0.5, -buttonSize / 2)
-				shotButtonFrame.AnchorPoint = Vector2.new(1, 0.5)
-				shotButtonFrame.BackgroundTransparency = 1
-				shotButtonFrame.ZIndex = 100
+		local function getMurdererFromServer()
+			local rf = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+			if not rf then return nil end
+			local ok, data = pcall(function() return rf:InvokeServer() end)
+			if not ok or type(data) ~= "table" then return nil end
+			for name, info in pairs(data) do
+				if info and info.Role == "Murderer" then
+					return Players:FindFirstChild(name)
+				end
+			end
+			return nil
+		end
 
-				shotButton = Instance.new("TextButton")
-				shotButton.Name = "SheriffShotButton"
-				shotButton.Size = UDim2.new(1, 0, 1, 0)
-				shotButton.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
-				shotButton.BackgroundTransparency = 0.2
-				shotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-				shotButton.Text = "SHOT"
-				shotButton.TextScaled = true
-				shotButton.Font = Enum.Font.GothamBold
-				shotButton.BorderSizePixel = 0
-				shotButton.ZIndex = 101
-				shotButton.AutoButtonColor = false
+		local function performShotAction()
+			-- анимация нажатия и реальный вызов ремота (в pcall)
+			if not LP.Character or not LP.Character:FindFirstChildOfClass("Humanoid") then return end
 
-				-- Красивый дизайн кнопки
-				local stroke = Instance.new("UIStroke")
-				stroke.Color = Color3.fromRGB(100, 0, 255)
-				stroke.Thickness = 3
-				stroke.Parent = shotButton
-
-				local corner = Instance.new("UICorner")
-				corner.CornerRadius = UDim.new(0.5, 0) -- круглая кнопка
-				corner.Parent = shotButton
-
-				local shadow = Instance.new("ImageLabel")
-				shadow.Name = "Shadow"
-				shadow.Size = UDim2.new(1.2, 0, 1.2, 0)
-				shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-				shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-				shadow.BackgroundTransparency = 1
-				shadow.Image = "rbxassetid://1316045217"
-				shadow.ImageColor3 = Color3.new(0, 0, 0)
-				shadow.ImageTransparency = 0.85
-				shadow.ScaleType = Enum.ScaleType.Slice
-				shadow.SliceCenter = Rect.new(10, 10, 118, 118)
-				shadow.ZIndex = 100
-				shadow.Parent = shotButton
-
-				-- 🔫 Нажатие кнопки
-				shotButton.MouseButton1Click:Connect(function()
-					-- Тут оставь свою логику выстрела
-					WindUI:Notify({
-						Title = "Sheriff System",
-						Content = "Bang! (кнопка работает)",
-						Icon = "check-circle",
-						Duration = 2
-					})
-				end)
-
-				shotButton.Parent = shotButtonFrame
-				shotButtonFrame.Parent = screenGui
-				shotButtonActive = true
-
-				WindUI:Notify({
-					Title = "Sheriff System",
-					Content = "Shot button activated",
-					Icon = "check-circle",
-					Duration = 3
-				})
+			local murderer = getMurdererFromServer()
+			if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
+				safeNotify({ Title = "Sheriff", Content = "Murderer not found", Icon = "x", Duration = 2 })
+				return
 			end
 
-			-- ✅ Функция для удаления кнопки
-			local function RemoveShotButton()
-				if shotButtonFrame then shotButtonFrame:Destroy() end
-				shotButton = nil
-				shotButtonFrame = nil
-				shotButtonActive = false
-				WindUI:Notify({
-					Title = "Sheriff System",
-					Content = "Shot button removed",
-					Icon = "x-circle",
-					Duration = 3
-				})
+			-- берем Gun (если есть), пытаемся найти Remote и вызвать
+			local gun = LP.Character:FindFirstChild("Gun") or LP.Backpack:FindFirstChild("Gun")
+			if not gun then
+				safeNotify({ Title = "Sheriff", Content = "No gun found", Icon = "x", Duration = 2 })
+				return
 			end
 
-			-- ⚡ Toggle в отдельном Section
-			shotSection:Toggle({
-				Title = "Toggle Shot Button",
-				Desc = "Вкл/выкл кнопку SHOT",
-				Default = false,
-				Callback = function(state)
-					if state then
-						CreateShotButton()
+			-- эквипим, если в рюкзаке
+			if gun.Parent ~= LP.Character then
+				pcall(function() gun.Parent = LP.Character end)
+				task.wait(0.02)
+			end
+
+			local targetPart = murderer.Character:FindFirstChild("HumanoidRootPart")
+			if not targetPart then return end
+
+			local remote = findKnifeRemote(gun)
+			if remote then
+				pcall(function()
+					if remote:IsA("RemoteFunction") then
+						remote:InvokeServer(10, targetPart.Position, "AH2")
 					else
-						RemoveShotButton()
+						remote:FireServer(10, targetPart.Position, "AH2")
 					end
-				end
-			})
+				end)
+				safeNotify({ Title = "Sheriff", Content = "Shot invoked", Icon = "check-circle", Duration = 1.2 })
+				return
+			end
 
-			-- 📏 Slider в отдельном Section
-			shotSection:Slider({
-				Title = "Button Size",
-				Step = 5,
-				Value = {
-					Min = 30,
-					Max = 150,
-					Default = 50
-				},
-				Callback = function(size)
-					buttonSize = size
-					if shotButtonActive then
-						local pos = shotButtonFrame.Position
-						RemoveShotButton()
-						CreateShotButton()
-						if shotButtonFrame then
-							shotButtonFrame.Position = pos -- сохраняем позицию при ресайзе
-						end
-					end
+			-- fallback: если ремота нет, просто вызываем Activate на инструменте (локально)
+			pcall(function() 
+				if typeof(gun.Activate) == "function" then 
+					gun:Activate() 
+				elseif gun:FindFirstChild("KnifeLocal") then 
+					local ok, cl = pcall(function() return gun.KnifeLocal.CreateBeam.RemoteFunction end)
+					if ok and cl then pcall(function() cl:InvokeServer(10, targetPart.Position, "AH2") end) end
 				end
+			end)
+			safeNotify({ Title = "Sheriff", Content = "Shot (fallback) attempted", Icon = "check-circle", Duration = 1.2 })
+		end
+
+		local function clampToViewport(x, y, guiSize)
+			local vx, vy = guiSize.X, guiSize.Y
+			x = math.clamp(x, 0, vx - buttonSize)
+			y = math.clamp(y, 0, vy - buttonSize)
+			return x, y
+		end
+
+		local function CreateShotButton()
+			if shotButtonActive then return end
+			local playerGui = LP:WaitForChild("PlayerGui")
+
+			-- Если уже есть — используем, иначе создаём чистый ScreenGui в PlayerGui
+			local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
+			if not screenGui then
+				screenGui = Instance.new("ScreenGui")
+				screenGui.Name = SHOT_GUI_NAME
+				screenGui.ResetOnSpawn = false
+				screenGui.IgnoreGuiInset = false
+				screenGui.Parent = playerGui
+				-- DisplayOrder небольшой, чтобы не мешать другим UI
+				screenGui.DisplayOrder = 50
+			end
+
+			shotButtonFrame = Instance.new("Frame")
+			shotButtonFrame.Name = "ShotButtonFrame"
+			shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+			shotButtonFrame.Position = UDim2.new(1, -buttonSize - 20, 0.5, -buttonSize/2)
+			shotButtonFrame.AnchorPoint = Vector2.new(1, 0.5)
+			shotButtonFrame.BackgroundTransparency = 1
+			shotButtonFrame.ZIndex = 100
+			shotButtonFrame.Parent = screenGui
+
+			-- тень (не перекрывающая всё)
+			local shadow = Instance.new("ImageLabel")
+			shadow.Name = "Shadow"
+			shadow.Size = UDim2.new(1.2, 0, 1.2, 0)
+			shadow.Position = UDim2.new(0.5, 0, 0.5, 6)
+			shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+			shadow.BackgroundTransparency = 1
+			shadow.Image = "rbxassetid://1316045217"
+			shadow.ImageColor3 = Color3.new(0,0,0)
+			shadow.ImageTransparency = 0.75
+			shadow.ScaleType = Enum.ScaleType.Slice
+			shadow.SliceCenter = Rect.new(10,10,118,118)
+			shadow.ZIndex = 99
+			shadow.Parent = shotButtonFrame
+
+			shotButton = Instance.new("TextButton")
+			shotButton.Name = "SheriffShotButton"
+			shotButton.Size = UDim2.new(1, 0, 1, 0)
+			shotButton.Position = UDim2.new(0, 0, 0, 0)
+			shotButton.BackgroundColor3 = Color3.fromRGB(20, 22, 25)
+			shotButton.BackgroundTransparency = 0
+			shotButton.Text = "⚡"
+			shotButton.TextColor3 = Color3.fromRGB(255,255,255)
+			shotButton.TextSize = 26
+			shotButton.Font = Enum.Font.GothamBold
+			shotButton.BorderSizePixel = 0
+			shotButton.ZIndex = 101
+			shotButton.AutoButtonColor = false
+			shotButton.TextScaled = true
+			shotButton.Parent = shotButtonFrame
+
+			-- круглая форма
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(1, 0)
+			corner.Parent = shotButton
+
+			-- тонкий ободок
+			local stroke = Instance.new("UIStroke")
+			stroke.Thickness = 2
+			stroke.Color = Color3.fromRGB(0, 120, 255)
+			stroke.Transparency = 0.25
+			stroke.Parent = shotButton
+
+			-- градиент
+			local gradient = Instance.new("UIGradient")
+			gradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(0,160,255)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(0,220,140))
 			})
+			gradient.Rotation = 45
+			gradient.Parent = shotButton
+
+			-- Анимация нажатия
+			local function animatePress()
+				local down = TweenService:Create(shotButton, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {Size = UDim2.new(0.92,0,0.92,0), BackgroundTransparency = 0.05})
+				local up = TweenService:Create(shotButton, TweenInfo.new(0.18, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 0})
+				down:Play(); down.Completed:Wait(); up:Play()
+			end
+
+			shotButton.MouseButton1Click:Connect(function()
+				animatePress()
+				performShotAction()
+			end)
+
+			-- Drag (поддерживает мышь и тач)
+			local dragging = false
+			local dragStartPos, startPos = nil, nil
+			shotButton.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					dragging = true
+					dragStartPos = input.Position
+					startPos = shotButtonFrame.Position
+					input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							dragging = false
+						end
+					end)
+				end
+			end)
+			shotButton.InputChanged:Connect(function(input)
+				if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					local delta = input.Position - dragStartPos
+					-- получаем viewport size (работает и на мобильных)
+					local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720)
+					local sx = (startPos.X.Offset + delta.X)
+					local sy = (startPos.Y.Offset + delta.Y)
+					sx, sy = clampToViewport(sx, sy, vs)
+					shotButtonFrame.Position = UDim2.new(0, sx, 0, sy)
+				end
+			end)
+
+			shotButtonActive = true
+			safeNotify({ Title = "Sheriff System", Content = "Shot button activated", Icon = "check-circle", Duration = 2 })
+		end
+
+		local function RemoveShotButton()
+			if not shotButtonActive then return end
+			local playerGui = LP:FindFirstChild("PlayerGui")
+			if playerGui then
+				local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
+				if screenGui then
+					screenGui:Destroy()
+				end
+			end
+			shotButtonFrame, shotButton = nil, nil
+			shotButtonActive = false
+			safeNotify({ Title = "Sheriff System", Content = "Shot button removed", Icon = "x", Duration = 1.2 })
+		end
+
+			-- Toggle UI control (создаёт/удаляет)
+		Tabs.CombatTab:Toggle({
+			Title = "Toggle Shot Button (Mobile)",
+			Desc = "Создаёт кнопку для выстрела (поддержка touch).",
+			Default = false,
+			Callback = function(state)
+				if state then
+					CreateShotButton()
+				else
+					RemoveShotButton()
+				end
+			end
+		})
+
+		-- Slider (меняет размер без пересоздания), не спамит уведомления
+		Tabs.CombatTab:Slider({
+			Title = "Button Size",
+			Step = 5,
+			Value = { Min = 40, Max = 150, Default = buttonSize },
+			Callback = function(size)
+				buttonSize = math.floor(size)
+				if shotButtonFrame then
+					shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+					-- если хотим, можно подвинуть AnchorPoint/Position обработать краевые случаи
+				end
+				-- не спамим уведомления каждый кадр — показываем только если прошло > NOTIFY_COOLDOWN
+				safeNotify({ Title = "Sheriff System", Content = "Button size: " .. tostring(buttonSize), Icon = "check-circle", Duration = 1.2 })
+			end
+		})
+	end
+		
 
 		
 	
