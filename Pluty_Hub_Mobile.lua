@@ -343,35 +343,8 @@ do
 			safeNotify({ Title = "Sheriff System", Content = "Shot button removed", Icon = "x", Duration = 1.2 })
 		end
 
-		-- Toggle UI control (создаёт/удаляет)
-		Tabs.CombatTab:Toggle({
-			Title = "Toggle Shot Button (Mobile)",
-			Desc = "Создаёт кнопку для выстрела (поддержка touch).",
-			Default = false,
-			Callback = function(state)
-				if state then
-					CreateShotButton()
-				else
-					RemoveShotButton()
-				end
-			end
-		})
-
-		-- Slider (меняет размер без пересоздания), не спамит уведомления
-		Tabs.CombatTab:Slider({
-			Title = "Button Size",
-			Step = 5,
-			Value = { Min = 40, Max = 150, Default = buttonSize },
-			Callback = function(size)
-				buttonSize = math.floor(size)
-				if shotButtonFrame then
-					shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-					-- если хотим, можно подвинуть AnchorPoint/Position обработать краевые случаи
-				end
-				-- не спамим уведомления каждый кадр — показываем только если прошло > NOTIFY_COOLDOWN
-				safeNotify({ Title = "Sheriff System", Content = "Button size: " .. tostring(buttonSize), Icon = "check-circle", Duration = 1.2 })
-			end
-		})
+		
+		
 	end
 
 
@@ -1740,13 +1713,153 @@ do
 				end)
 			end
 
+
 			-----Button Shot Murder(Silent Aim)---------
+
 
 		Tabs.CombatTab:Section({
 			Title = gradient("Shot Button", Color3.fromHex("#001e80"), Color3.fromHex("#16f2d9"))
 		})
 
-	
+			local shotButton = nil
+			local shotButtonFrame = nil
+			local shotButtonActive = false
+			local shotType = "Default"
+			local buttonSize = 50
+
+			-- ✅ Функция для создания кнопки
+			local function CreateShotButton()
+				if shotButton then return end
+
+				local screenGui = game:GetService("CoreGui"):FindFirstChild("WindUI_SheriffGui")
+				if not screenGui then
+					screenGui = Instance.new("ScreenGui")
+					screenGui.Name = "WindUI_SheriffGui"
+					screenGui.Parent = game:GetService("CoreGui")
+					screenGui.ResetOnSpawn = false
+					screenGui.DisplayOrder = 999
+					screenGui.IgnoreGuiInset = true
+				end
+
+				shotButtonFrame = Instance.new("Frame")
+				shotButtonFrame.Name = "ShotButtonFrame"
+				shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+				shotButtonFrame.Position = UDim2.new(1, -buttonSize - 20, 0.5, -buttonSize / 2)
+				shotButtonFrame.AnchorPoint = Vector2.new(1, 0.5)
+				shotButtonFrame.BackgroundTransparency = 1
+				shotButtonFrame.ZIndex = 100
+
+				shotButton = Instance.new("TextButton")
+				shotButton.Name = "SheriffShotButton"
+				shotButton.Size = UDim2.new(1, 0, 1, 0)
+				shotButton.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+				shotButton.BackgroundTransparency = 0.2
+				shotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+				shotButton.Text = "SHOT"
+				shotButton.TextScaled = true
+				shotButton.Font = Enum.Font.GothamBold
+				shotButton.BorderSizePixel = 0
+				shotButton.ZIndex = 101
+				shotButton.AutoButtonColor = false
+
+				-- Красивый дизайн кнопки
+				local stroke = Instance.new("UIStroke")
+				stroke.Color = Color3.fromRGB(100, 0, 255)
+				stroke.Thickness = 3
+				stroke.Parent = shotButton
+
+				local corner = Instance.new("UICorner")
+				corner.CornerRadius = UDim.new(0.5, 0) -- круглая кнопка
+				corner.Parent = shotButton
+
+				local shadow = Instance.new("ImageLabel")
+				shadow.Name = "Shadow"
+				shadow.Size = UDim2.new(1.2, 0, 1.2, 0)
+				shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+				shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+				shadow.BackgroundTransparency = 1
+				shadow.Image = "rbxassetid://1316045217"
+				shadow.ImageColor3 = Color3.new(0, 0, 0)
+				shadow.ImageTransparency = 0.85
+				shadow.ScaleType = Enum.ScaleType.Slice
+				shadow.SliceCenter = Rect.new(10, 10, 118, 118)
+				shadow.ZIndex = 100
+				shadow.Parent = shotButton
+
+				-- 🔫 Нажатие кнопки
+				shotButton.MouseButton1Click:Connect(function()
+					-- Тут оставь свою логику выстрела
+					WindUI:Notify({
+						Title = "Sheriff System",
+						Content = "Bang! (кнопка работает)",
+						Icon = "check-circle",
+						Duration = 2
+					})
+				end)
+
+				shotButton.Parent = shotButtonFrame
+				shotButtonFrame.Parent = screenGui
+				shotButtonActive = true
+
+				WindUI:Notify({
+					Title = "Sheriff System",
+					Content = "Shot button activated",
+					Icon = "check-circle",
+					Duration = 3
+				})
+			end
+
+			-- ✅ Функция для удаления кнопки
+			local function RemoveShotButton()
+				if shotButtonFrame then shotButtonFrame:Destroy() end
+				shotButton = nil
+				shotButtonFrame = nil
+				shotButtonActive = false
+				WindUI:Notify({
+					Title = "Sheriff System",
+					Content = "Shot button removed",
+					Icon = "x-circle",
+					Duration = 3
+				})
+			end
+
+			-- ⚡ Toggle в отдельном Section
+			shotSection:Toggle({
+				Title = "Toggle Shot Button",
+				Desc = "Вкл/выкл кнопку SHOT",
+				Default = false,
+				Callback = function(state)
+					if state then
+						CreateShotButton()
+					else
+						RemoveShotButton()
+					end
+				end
+			})
+
+			-- 📏 Slider в отдельном Section
+			shotSection:Slider({
+				Title = "Button Size",
+				Step = 5,
+				Value = {
+					Min = 30,
+					Max = 150,
+					Default = 50
+				},
+				Callback = function(size)
+					buttonSize = size
+					if shotButtonActive then
+						local pos = shotButtonFrame.Position
+						RemoveShotButton()
+						CreateShotButton()
+						if shotButtonFrame then
+							shotButtonFrame.Position = pos -- сохраняем позицию при ресайзе
+						end
+					end
+				end
+			})
+
+		
 	
 		
 
