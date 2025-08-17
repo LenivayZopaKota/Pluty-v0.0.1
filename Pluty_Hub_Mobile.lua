@@ -2366,22 +2366,30 @@ end
         end
 
         -- ✅ Проверка: виден ли мешок (адаптировано для телефона)
+        -- Проверка: можно ли фармить (мешок существует и виден в интерфейсе)
         local function IsCoinBagVisible()
-        local gui = LP:FindFirstChild("PlayerGui")
-        if not gui then return false end
+            local gui = LP:FindFirstChild("PlayerGui")
+            if not gui then return false end
 
-        local coinsIcon = gui:FindFirstChild("MainGUI", true)
-            and gui.MainGUI:FindFirstChild("Game", true)
-            and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
-            and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
-            and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
-            and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("CurrencyFrame", true)
-            and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame:FindFirstChild("Icon", true)
-            and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame.Icon:FindFirstChild("Coins", true)
+            local coinsLabel = gui:FindFirstChild("MainGUI", true)
+                and gui.MainGUI:FindFirstChild("Game", true)
+                and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
+                and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
+                and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
+                and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("CurrencyFrame", true)
+                and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame:FindFirstChild("Icon", true)
+                and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame.Icon:FindFirstChild("Coins", true)
 
-        return coinsIcon and coinsIcon.Visible
-    end
+            if coinsLabel and coinsLabel:IsA("TextLabel") then
+                return tonumber(coinsLabel.ContentText) ~= nil
+            end
 
+            return false
+        end
+
+
+    --ContentText (значение в ввиде цифры, т.е. сколько игрок нафармил) в мини разделе Text
+    --game:GetService("Players").lenivayzopakota4.PlayerGui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame.Icon.Coins
 
         -- Проверка: мешок заполнен
         local function IsBagFull()
