@@ -2371,21 +2371,30 @@ end
             local gui = LP:FindFirstChild("PlayerGui")
             if not gui then return false end
 
-            local coinsLabel = gui:FindFirstChild("MainGUI", true)
+            local container = gui:FindFirstChild("MainGUI", true)
                 and gui.MainGUI:FindFirstChild("Game", true)
                 and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
                 and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
-                and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
-                and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("CurrencyFrame", true)
-                and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame:FindFirstChild("Icon", true)
-                and gui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame.Icon:FindFirstChild("Coins", true)
+
+            if not container then return false end
+
+            local beachBall = container:FindFirstChild("BeachBall")
+            if beachBall and beachBall.Visible then
+                return true -- ПК метод
+            end
+
+            local coinsLabel = container:FindFirstChild("CurrencyFrame", true)
+                and container.CurrencyFrame:FindFirstChild("Icon", true)
+                and container.CurrencyFrame.Icon:FindFirstChild("Coins", true)
 
             if coinsLabel and coinsLabel:IsA("TextLabel") then
-                return tonumber(coinsLabel.ContentText) ~= nil
+                local num = tonumber(coinsLabel.ContentText)
+                return num ~= nil and num > 0 -- если там число > 0, значит фарм идёт
             end
 
             return false
         end
+
 
 
     --ContentText (значение в ввиде цифры, т.е. сколько игрок нафармил) в мини разделе Text
