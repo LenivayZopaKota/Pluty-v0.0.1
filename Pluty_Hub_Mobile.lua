@@ -2310,285 +2310,267 @@ end
 			--------------AutoFarmTab---------------
 
 	do
-        --// AutoFarm System (Mobile Adapted)
-        local Section = Tabs.AutoFarmTab:Section({ 
-            Title = "AutoFarm (Mobile)",
-            TextXAlignment = "Left",
-            TextSize = 17,
-        })
+            --// AutoFarm System (Mobile Adapted, FIXED PATHS)
+            local Section = Tabs.AutoFarmTab:Section({ 
+                Title = "AutoFarm",
+                TextXAlignment = "Left",
+                TextSize = 17,
+            })
 
-        local Players = game:GetService("Players")
-        local Workspace = game:GetService("Workspace")
-        local LP = Players.LocalPlayer
+            local Players = game:GetService("Players")
+            local Workspace = game:GetService("Workspace")
+            local LP = Players.LocalPlayer
 
-        -- Переменные
-        local AutoFarmRunning = false
-        local SmoothSaveMode = false
-        local Mode = "Smooth"
-        local TeleportDelay = 3
-        local SmoothSpeed = 25
-        local SpawnCFrame = CFrame.new(112.961197, 140.252960, 46.383835)
+            -- Переменные
+            local AutoFarmRunning = false
+            local SmoothSaveMode = false
+            local Mode = "Smooth"
+            local TeleportDelay = 3
+            local SmoothSpeed = 25
+            local SpawnCFrame = CFrame.new(112.961197, 140.252960, 46.383835)
 
-        -- Карты
-        local Maps = {
-            "Factory","Hospital3","MilBase","House2","Workplace","Mansion2",
-            "BioLab","Hotel","Bank2","PoliceStation","ResearchFacility",
-            "Lobby","BeachResort","Yacht","Office3"
-        }
+            -- Карты
+            local Maps = {
+                "Factory","Hospital3","MilBase","House2","Workplace","Mansion2",
+                "BioLab","Hotel","Bank2","PoliceStation","ResearchFacility",
+                "Lobby","BeachResort","Yacht","Office3"
+            }
 
-        -- Проверка: монета доступна
-        local function IsCollectableCoin(part)
-            return part:FindFirstChild("TouchInterest") ~= nil
-        end
+            -- Проверка: монета доступна
+            local function IsCollectableCoin(part)
+                return part:FindFirstChild("TouchInterest") ~= nil
+            end
 
-        -- Поиск ближайшей монеты
-        local function GetClosestCoin()
-            if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return nil end
-            local hrp = LP.Character.HumanoidRootPart
-            local closest, bestDist = nil, math.huge
+            -- Поиск ближайшей монеты
+            local function GetClosestCoin()
+                if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return nil end
+                local hrp = LP.Character.HumanoidRootPart
+                local closest, bestDist = nil, math.huge
 
-            for _, mapName in ipairs(Maps) do
-                local map = Workspace:FindFirstChild(mapName)
-                if map and map:FindFirstChild("CoinContainer") then
-                    for _, coin in ipairs(map.CoinContainer:GetChildren()) do
-                        if IsCollectableCoin(coin) then
-                            local pos = coin.Position
-                            local dist = (hrp.Position - pos).Magnitude
-                            if dist < bestDist then
-                                bestDist = dist
-                                closest = coin
+                for _, mapName in ipairs(Maps) do
+                    local map = Workspace:FindFirstChild(mapName)
+                    if map and map:FindFirstChild("CoinContainer") then
+                        for _, coin in ipairs(map.CoinContainer:GetChildren()) do
+                            if IsCollectableCoin(coin) then
+                                local pos = coin.Position
+                                local dist = (hrp.Position - pos).Magnitude
+                                if dist < bestDist then
+                                    bestDist = dist
+                                    closest = coin
+                                end
                             end
                         end
                     end
                 end
-            end
-            return closest
-        end
-
-        -- ✅ Проверка: виден ли мешок (адаптировано для телефона)
-        -- Проверка: можно ли фармить (мешок существует и виден в интерфейсе)
-        local function IsCoinBagVisible()
-            local gui = LP:FindFirstChild("PlayerGui")
-            if not gui then return false end
-
-            local container = gui:FindFirstChild("MainGUI", true)
-                and gui.MainGUI:FindFirstChild("Game", true)
-                and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
-                and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
-
-            if not container then return false end
-
-            local beachBall = container:FindFirstChild("BeachBall")
-            if beachBall and beachBall.Visible then
-                return true -- ПК метод
+                return closest
             end
 
-            local coinsLabel = container:FindFirstChild("CurrencyFrame", true)
-                and container.CurrencyFrame:FindFirstChild("Icon", true)
-                and container.CurrencyFrame.Icon:FindFirstChild("Coins", true)
+            -- ✅ Проверка: можно ли фармить (мешок существует и виден в интерфейсе)
+            local function IsCoinBagVisible()
+                local gui = LP:FindFirstChild("PlayerGui")
+                if not gui then return false end
 
-            if coinsLabel and coinsLabel:IsA("TextLabel") then
-                local num = tonumber(coinsLabel.ContentText)
-                return num ~= nil and num > 0 -- если там число > 0, значит фарм идёт
+                local bag = gui:FindFirstChild("MainGUI", true)
+                    and gui.MainGUI:FindFirstChild("Lobby", true)
+                    and gui.MainGUI.Lobby:FindFirstChild("Dock", true)
+                    and gui.MainGUI.Lobby.Dock:FindFirstChild("CoinBags", true)
+                    and gui.MainGUI.Lobby.Dock.CoinBags:FindFirstChild("Container", true)
+                    and gui.MainGUI.Lobby.Dock.CoinBags.Container:FindFirstChild("BeachBall", true)
+
+                return bag and bag.Visible
             end
 
-            return false
-        end
+            -- ✅ Проверка: мешок заполнен
+            local function IsBagFull()
+                local gui = LP:FindFirstChild("PlayerGui")
+                if not gui then return false end
 
+                local fullLabel = gui:FindFirstChild("MainGUI", true)
+                    and gui.MainGUI:FindFirstChild("Lobby", true)
+                    and gui.MainGUI.Lobby:FindFirstChild("Dock", true)
+                    and gui.MainGUI.Lobby.Dock:FindFirstChild("CoinBags", true)
+                    and gui.MainGUI.Lobby.Dock.CoinBags:FindFirstChild("Container", true)
+                    and gui.MainGUI.Lobby.Dock.CoinBags.Container:FindFirstChild("BeachBall", true)
+                    and gui.MainGUI.Lobby.Dock.CoinBags.Container.BeachBall:FindFirstChild("Full")
 
-
-    --ContentText (значение в ввиде цифры, т.е. сколько игрок нафармил) в мини разделе Text
-    --game:GetService("Players").lenivayzopakota4.PlayerGui.MainGUI.Game.CoinBags.Container.BeachBall.CurrencyFrame.Icon.Coins
-
-        -- Проверка: мешок заполнен
-        local function IsBagFull()
-            local gui = LP:FindFirstChild("PlayerGui")
-            if not gui then return false end
-
-            local fullLabel = gui:FindFirstChild("MainGUI", true)
-                and gui.MainGUI:FindFirstChild("Game", true)
-                and gui.MainGUI.Game:FindFirstChild("CoinBags", true)
-                and gui.MainGUI.Game.CoinBags:FindFirstChild("Container", true)
-                and gui.MainGUI.Game.CoinBags.Container:FindFirstChild("BeachBall", true)
-                and gui.MainGUI.Game.CoinBags.Container.BeachBall:FindFirstChild("Full")
-
-            return fullLabel and fullLabel.Visible
-        end
-
-        -- Суицид
-        local function KillPlayer()
-            local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
-            if hum then hum.Health = 0 end
-        end
-
-        -- Teleport режим
-        local function TeleportFarm()
-            local coin = GetClosestCoin()
-            if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                local pos = coin.Position
-                LP.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
-                task.wait(0.3)
-                LP.Character.HumanoidRootPart.CFrame = SpawnCFrame
+                return fullLabel and fullLabel.Visible
             end
-        end
 
-        -- Smooth режим
-        local function SmoothFarm()
-            local coin = GetClosestCoin()
-            if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
-                local pos = coin.Position
-                local hrp = LP.Character.HumanoidRootPart
-                local dist = (pos - hrp.Position).Magnitude
-                if dist > 0 then
-                    local totalTime = dist / SmoothSpeed
-                    local start = tick()
-                    local startPos = hrp.Position
-                    while tick() - start < totalTime do
-                        if not AutoFarmRunning or not IsCoinBagVisible() then return end
-                        local alpha = (tick() - start) / totalTime
-                        local interpolated = startPos:Lerp(pos, alpha)
+            -- Суицид
+            local function KillPlayer()
+                local hum = LP.Character and LP.Character:FindFirstChildOfClass("Humanoid")
+                if hum then hum.Health = 0 end
+            end
 
-                        if SmoothSaveMode then
-                            interpolated = interpolated - Vector3.new(0, 2.5, 0)
-                            hrp.CFrame = CFrame.new(interpolated) * CFrame.Angles(math.rad(90), 0, 0)
-                        else
-                            hrp.CFrame = CFrame.new(interpolated)
-                        end
-                        task.wait(0.015)
-                    end
+            -- Teleport режим
+            local function TeleportFarm()
+                local coin = GetClosestCoin()
+                if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                    local pos = coin.Position
+                    LP.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
+                    task.wait(0.3)
+                    LP.Character.HumanoidRootPart.CFrame = SpawnCFrame
                 end
             end
-        end
 
-        -- Главный цикл
-        task.spawn(function()
-            while true do
-                task.wait(0.8)
+            -- Smooth режим
+            local function SmoothFarm()
+                local coin = GetClosestCoin()
+                if coin and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                    local pos = coin.Position
+                    local hrp = LP.Character.HumanoidRootPart
+                    local dist = (pos - hrp.Position).Magnitude
+                    if dist > 0 then
+                        local totalTime = dist / SmoothSpeed
+                        local start = tick()
+                        local startPos = hrp.Position
+                        while tick() - start < totalTime do
+                            if not AutoFarmRunning or not IsCoinBagVisible() then return end
+                            local alpha = (tick() - start) / totalTime
+                            local interpolated = startPos:Lerp(pos, alpha)
 
-                if AutoFarmRunning then
-                    if not IsCoinBagVisible() then continue end
-                    if IsBagFull() then
-                        KillPlayer()
-                        continue
-                    end
-                    if Mode == "Teleport" then
-                        task.wait(TeleportDelay)
-                        TeleportFarm()
-                    else
-                        SmoothFarm()
-                    end
-                end
-            end
-        end)
-
-        -- === UI ===
-
-        local DropdownMode = Tabs.AutoFarmTab:Dropdown({
-            Title = "AutoFarm Mode",
-            Values = { "Smooth", "Teleport" },
-            Value = "Smooth",
-            Callback = function(option)
-                Mode = option
-            end
-        })
-
-        local SliderTeleport = Tabs.AutoFarmTab:Slider({
-            Title = "Teleport Delay",
-            Step = 0.1,
-            Value = { Min = 0.5, Max = 5, Default = TeleportDelay },
-            Callback = function(value)
-                TeleportDelay = value
-            end
-        })
-
-        local SliderSmooth = Tabs.AutoFarmTab:Slider({
-            Title = "Smooth Speed",
-            Step = 1,
-            Value = { Min = 20, Max = 100, Default = SmoothSpeed },
-            Callback = function(value)
-                SmoothSpeed = value
-            end
-        })
-
-        local ToggleAutoFarm = Tabs.AutoFarmTab:Toggle({
-            Title = "Enable AutoFarm",
-            Default = false,
-            Callback = function(state)
-                AutoFarmRunning = state
-            end
-        })
-
-        local ToggleSmoothSave = Tabs.AutoFarmTab:Toggle({
-            Title = "Smooth Save Mode",
-            Default = false,
-            Callback = function(state)
-                SmoothSaveMode = state
-            end
-        })
-
-        -- Coin ESP
-        local function getAllCoins()
-            local coins = {}
-            for _, mapName in ipairs(Maps) do
-                local map = Workspace:FindFirstChild(mapName)
-                if map and map:FindFirstChild("CoinContainer") then
-                    for _, child in ipairs(map.CoinContainer:GetChildren()) do
-                        if child:IsA("BasePart") and child:FindFirstChildWhichIsA("TouchTransmitter") then
-                            table.insert(coins, child)
+                            if SmoothSaveMode then
+                                interpolated = interpolated - Vector3.new(0, 2.5, 0)
+                                hrp.CFrame = CFrame.new(interpolated) * CFrame.Angles(math.rad(90), 0, 0)
+                            else
+                                hrp.CFrame = CFrame.new(interpolated)
+                            end
+                            task.wait(0.015)
                         end
                     end
                 end
             end
-            return coins
-        end
 
-        local function clearBoxes()
-            for _, adorn in pairs(game:GetService("CoreGui"):GetChildren()) do
-                if adorn:IsA("BoxHandleAdornment") and adorn.Name == "CoinESP" then
-                    adorn:Destroy()
-                end
-            end
-        end
-
-        local function showBoxes()
-            clearBoxes()
-            for _, coin in pairs(getAllCoins()) do
-                local box = Instance.new("BoxHandleAdornment")
-                box.Name = "CoinESP"
-                box.Adornee = coin
-                box.AlwaysOnTop = true
-                box.ZIndex = 10
-                box.Size = coin.Size
-                box.Color3 = Color3.fromRGB(255, 215, 0)
-                box.Transparency = 0.3
-                box.Parent = game:GetService("CoreGui")
-            end
-        end
-
-        local isESP = false
-        local function startCoinESP()
-            if isESP then return end
-            isESP = true
+            -- Главный цикл
             task.spawn(function()
-                while isESP do
-                    showBoxes()
-                    task.wait(1.2)
+                while true do
+                    task.wait(0.8)
+
+                    if AutoFarmRunning then
+                        if not IsCoinBagVisible() then continue end
+                        if IsBagFull() then
+                            KillPlayer()
+                            continue
+                        end
+                        if Mode == "Teleport" then
+                            task.wait(TeleportDelay)
+                            TeleportFarm()
+                        else
+                            SmoothFarm()
+                        end
+                    end
                 end
             end)
-        end
 
-        local function stopCoinESP()
-            isESP = false
-            clearBoxes()
-        end
+            -- === UI ===
 
-        local ToggleESP = Tabs.AutoFarmTab:Toggle({
-            Title = "Show Coins ESP",
-            Default = false,
-            Callback = function(state)
-                if state then startCoinESP() else stopCoinESP() end
+            local DropdownMode = Tabs.AutoFarmTab:Dropdown({
+                Title = "AutoFarm Mode",
+                Values = { "Smooth", "Teleport" },
+                Value = "Smooth",
+                Callback = function(option)
+                    Mode = option
+                end
+            })
+
+            local SliderTeleport = Tabs.AutoFarmTab:Slider({
+                Title = "Teleport Delay",
+                Step = 0.1,
+                Value = { Min = 0.5, Max = 5, Default = TeleportDelay },
+                Callback = function(value)
+                    TeleportDelay = value
+                end
+            })
+
+            local SliderSmooth = Tabs.AutoFarmTab:Slider({
+                Title = "Smooth Speed",
+                Step = 1,
+                Value = { Min = 20, Max = 100, Default = SmoothSpeed },
+                Callback = function(value)
+                    SmoothSpeed = value
+                end
+            })
+
+            local ToggleAutoFarm = Tabs.AutoFarmTab:Toggle({
+                Title = "Enable AutoFarm",
+                Default = false,
+                Callback = function(state)
+                    AutoFarmRunning = state
+                end
+            })
+
+            local ToggleSmoothSave = Tabs.AutoFarmTab:Toggle({
+                Title = "Smooth Save Mode",
+                Default = false,
+                Callback = function(state)
+                    SmoothSaveMode = state
+                end
+            })
+
+            -- Coin ESP
+            local function getAllCoins()
+                local coins = {}
+                for _, mapName in ipairs(Maps) do
+                    local map = Workspace:FindFirstChild(mapName)
+                    if map and map:FindFirstChild("CoinContainer") then
+                        for _, child in ipairs(map.CoinContainer:GetChildren()) do
+                            if child:IsA("BasePart") and child:FindFirstChildWhichIsA("TouchTransmitter") then
+                                table.insert(coins, child)
+                            end
+                        end
+                    end
+                end
+                return coins
             end
-        })
+
+            local function clearBoxes()
+                for _, adorn in pairs(game:GetService("CoreGui"):GetChildren()) do
+                    if adorn:IsA("BoxHandleAdornment") and adorn.Name == "CoinESP" then
+                        adorn:Destroy()
+                    end
+                end
+            end
+
+            local function showBoxes()
+                clearBoxes()
+                for _, coin in pairs(getAllCoins()) do
+                    local box = Instance.new("BoxHandleAdornment")
+                    box.Name = "CoinESP"
+                    box.Adornee = coin
+                    box.AlwaysOnTop = true
+                    box.ZIndex = 10
+                    box.Size = coin.Size
+                    box.Color3 = Color3.fromRGB(255, 215, 0)
+                    box.Transparency = 0.3
+                    box.Parent = game:GetService("CoreGui")
+                end
+            end
+
+            local isESP = false
+            local function startCoinESP()
+                if isESP then return end
+                isESP = true
+                task.spawn(function()
+                    while isESP do
+                        showBoxes()
+                        task.wait(1.2)
+                    end
+                end)
+            end
+
+            local function stopCoinESP()
+                isESP = false
+                clearBoxes()
+            end
+
+            local ToggleESP = Tabs.AutoFarmTab:Toggle({
+                Title = "Show Coins ESP",
+                Default = false,
+                Callback = function(state)
+                    if state then startCoinESP() else stopCoinESP() end
+                end
+            })
+
 
 
 
