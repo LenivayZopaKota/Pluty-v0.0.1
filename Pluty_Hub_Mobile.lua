@@ -421,7 +421,7 @@ do
 
 			------CharacterTab-----
 	do
-				local CharacterTab = Tabs.CharacterTab
+			local CharacterTab = Tabs.CharacterTab
 			local Players = game:GetService("Players")
 			local RunService = game:GetService("RunService")
 			local UserInputService = game:GetService("UserInputService")
@@ -434,8 +434,9 @@ do
 			local walkSpeed = defWalk
 			local walkToggle = false
 
-			CharacterTab:Section({Title = "WalkSpeed"})
-
+            Tabs.CharacterTab:Section({
+                Title = gradient("WalkSpeed", Color3.fromHex("#ff5500"), Color3.fromHex("#460000"))
+            })
 			CharacterTab:Slider({
 				Title = "WalkSpeed",
 				Value = {Min = 16, Max = 100, Default = defWalk},
@@ -456,9 +457,9 @@ do
 			local defJump = 50
 			local jumpPower = defJump
 			local jumpToggle = false
-
-			CharacterTab:Section({Title = "JumpPower"})
-
+            Tabs.CharacterTab:Section({
+                Title = gradient("JumpPower", Color3.fromHex("#ff5566"), Color3.fromHex("#491100"))
+            })
 			CharacterTab:Slider({
 				Title = "JumpPower",
 				Value = {Min = 20, Max = 100, Default = defJump},
@@ -481,7 +482,9 @@ do
 			local flyConnections = {}
 			local flyBodyVelocity, flyBodyGyro
 
-			CharacterTab:Section({Title = "Movement"})
+            Tabs.CharacterTab:Section({
+                Title = gradient("Movement", Color3.fromHex("#ff2356"), Color3.fromHex("#190990"))
+            })
 
 			CharacterTab:Toggle({
 				Title = "Fly",
@@ -513,7 +516,9 @@ do
 			})
 
 			-- ===== Respawn =====
-			CharacterTab:Section({Title = "Respawn"})
+            Tabs.CharacterTab:Section({
+                Title = gradient("Respawn", Color3.fromHex("#771a8f"), Color3.fromHex("#1132a8"))
+            })
 
 			CharacterTab:Button({
 				Title = "Character Respawn",
@@ -647,12 +652,10 @@ do
 			------TeleportTab---
 
 do
-	
-	local Section = Tabs.TeleportTab:Section({ 
-		Title = "Teleport to a person",
-		TextXAlignment = "Left",
-		TextSize = 17,
-	})
+
+    Tabs.TeleportTab:Section({
+        Title = gradient("Teleport to a person", Color3.fromHex("#231a8f"), Color3.fromHex("#d90fd2"))
+    })
 
 	local Players = game:GetService("Players")
 	local LocalPlayer = Players.LocalPlayer
@@ -734,7 +737,9 @@ do
 	})
 
 	-- Быстрые телепорты
-	Tabs.TeleportTab:Section({ Title = "Teleport to", TextXAlignment = "Left", TextSize = 17 })
+    Tabs.TeleportTab:Section({
+        Title = gradient("Teleport to", Color3.fromHex("#d4132a"), Color3.fromHex("#0e2ab5"))
+    })
 
 	Tabs.TeleportTab:Button({
 		Title = "Teleport to Lobby",
@@ -769,7 +774,10 @@ do
 	})
 
 	-- ================== GrabGun ==================
-	Tabs.TeleportTab:Section({ Title = "GrabGun", TextXAlignment = "Left", TextSize = 17 })
+
+    Tabs.TeleportTab:Section({
+        Title = gradient("GrabGun", Color3.fromHex("#092094"), Color3.fromHex("#094a94"))
+    })
 
 	local gunDropESPEnabled = true
 	local autoGrabEnabled = false
@@ -920,9 +928,11 @@ end
 	do
 		
 					-- Combat Tab setup
-			local CombatSection = Tabs.CombatTab:Section({
-				Title = "Sheriff"
-			})
+			
+
+            Tabs.CombatTab:Section({
+                Title = gradient("Sheriff", Color3.fromHex("#1205a3"), Color3.fromHex("#06718a"))
+            })
 
 			-- Local state
 			local Players = game:GetService("Players")
@@ -1748,12 +1758,10 @@ end
 	end
 
 					------killAll-----
-
-		local Section = Tabs.CombatTab:Section({ 
-			Title = "Murder",
-			TextXAlignment = "Left",
-			TextSize = 17, -- Default Size
-		})
+            Tabs.CombatTab:Section({
+                Title = gradient("Murder", Color3.fromHex("#ed0e0e"), Color3.fromHex("#f235b3"))
+            })
+		
 
 						--// Services
 			local Players = game:GetService("Players")
@@ -1880,7 +1888,7 @@ end
 			})
 
 
-			----KnifeAura---------------
+			                ----KnifeAura---------------
 						--// Services
 					local Players = game:GetService("Players")
 					local RunService = game:GetService("RunService")
@@ -1992,311 +2000,309 @@ end
 
 
 	do
-		local Section = Tabs.TrollingTab:Section({ 
-		Title = "Fling",
-		TextXAlignment = "Left",
-		TextSize = 17,
-	})
+	
 
-    -- === Переменные ===
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    local trollTarget = nil
-    local FlingActive = false
-    getgenv().OldPos = nil
-    getgenv().FPDH = workspace.FallenPartsDestroyHeight
-
-    -- === Обновление списка игроков ===
-    local function updateTrollingPlayers()
-        local playersList = {"Select Player"}
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer then
-                table.insert(playersList, player.Name)
-            end
-        end
-        return playersList
-    end
-
-    -- === Dropdown ===
-    local Dropdown = Tabs.TrollingTab:Dropdown({
-        Title = "Players",
-        Values = updateTrollingPlayers(),
-        Multi = false,
-        Value = "Select Player",
-		Callback = function(selected)
-        	if selected ~= "Select Player" then
-            	trollTarget = Players:FindFirstChild(selected)
-        	else
-            	trollTarget = nil
-        	end
-    end
-})
-
-    -- Автообновление игроков
-    Players.PlayerAdded:Connect(function()
-        task.wait(1)
-        Dropdown:SetValues(updateTrollingPlayers())
-    end)
-
-    Players.PlayerRemoving:Connect(function()
-        Dropdown:SetValues(updateTrollingPlayers())
-    end)
-
-    -- === Notification ===
-    local function Message(Title, Text, Time)
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = Title,
-            Text = Text,
-            Duration = Time or 5
+        Tabs.TrollingTab:Section({
+            Title = gradient("Fling", Color3.fromHex("#1366a1"), Color3.fromHex("#823f10"))
         })
-    end
 
-                -----=----- Типа Логика Fling-------
-    	local function SkidFling(TargetPlayer)
-        local Character = LocalPlayer.Character
-        local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
-        local RootPart = Humanoid and Humanoid.RootPart
-        local TCharacter = TargetPlayer and TargetPlayer.Character
-        if not TCharacter then return end
+        -- === Переменные ===
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local trollTarget = nil
+        local FlingActive = false
+        getgenv().OldPos = nil
+        getgenv().FPDH = workspace.FallenPartsDestroyHeight
 
-        local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
-        local TRootPart = THumanoid and THumanoid.RootPart
-        local THead = TCharacter:FindFirstChild("Head")
-        local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
-        local Handle = Accessory and Accessory:FindFirstChild("Handle")
-
-        if Character and Humanoid and RootPart then
-            if RootPart.Velocity.Magnitude < 50 then
-                getgenv().OldPos = RootPart.CFrame
+        -- === Обновление списка игроков ===
+        local function updateTrollingPlayers()
+            local playersList = {"Select Player"}
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer then
+                    table.insert(playersList, player.Name)
+                end
             end
-
-            if THumanoid and THumanoid.Sit then
-                return 
-				WindUI:Notify({
-					Title = "Error",
-					Content = TargetPlayer.Name .. " is sitting",
-					Duration = 3,
-				})
-            end
-
-            -- Камера
-            if THead then
-                workspace.CurrentCamera.CameraSubject = THead
-            elseif Handle then
-                workspace.CurrentCamera.CameraSubject = Handle
-            elseif THumanoid and TRootPart then
-                workspace.CurrentCamera.CameraSubject = THumanoid
-            end
-
-            if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
-
-            local FPos = function(BasePart, Pos, Ang)
-                RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
-                Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
-                RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
-                RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
-            end
-
-            local SFBasePart = function(BasePart)
-                local TimeToWait = 2
-                local Time = tick()
-                local Angle = 0
-                repeat
-                    if RootPart and THumanoid then
-                        if BasePart.Velocity.Magnitude < 50 then
-                            Angle = Angle + 100
-                            FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
-                            task.wait()
-                        else
-                            FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
-                            task.wait()
-                            
-                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
-                            task.wait()
-                            FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
-                            task.wait()
-                        end
-                    end
-                until Time + TimeToWait < tick() or not FlingActive
-            end
-
-            workspace.FallenPartsDestroyHeight = 0/0
-
-            local BV = Instance.new("BodyVelocity")
-            BV.Parent = RootPart
-            BV.Velocity = Vector3.new(0, 0, 0)
-            BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-
-            Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-
-            if TRootPart then
-                SFBasePart(TRootPart)
-            elseif THead then
-                SFBasePart(THead)
-            elseif Handle then
-                SFBasePart(Handle)
-            else
-                return 
-				WindUI:Notify({
-					Title = "Error",
-					Content = TargetPlayer.Name .. " has no valid parts",
-					Duration = 3,
-				})
-            end
-
-            BV:Destroy()
-            Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
-            workspace.CurrentCamera.CameraSubject = Humanoid
-
-            if getgenv().OldPos then
-                repeat
-                    RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
-                    Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
-                    Humanoid:ChangeState("GettingUp")
-                    for _, part in pairs(Character:GetChildren()) do
-                        if part:IsA("BasePart") then
-                            part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
-                        end
-                    end
-                    task.wait()
-                until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
-                workspace.FallenPartsDestroyHeight = getgenv().FPDH
-            end
-        else
-            return
-				WindUI:Notify({
-					Title = "Error",
-					Content = "Your character is not ready",
-					Duration = 3,
-				})
-        end
-    end
-
-    local Button = Tabs.TrollingTab:Button({
-    Title = "Fling Target",
-    Desc = "",
-	Locked = false,
-    Callback = function()
-        if not trollTarget or not trollTarget:IsA("Player") then
-            return 
-				WindUI:Notify({
-					Title = "Error",
-					Content = "No Player selected",
-					Duration = 3,
-			})
+            return playersList
         end
 
-        FlingActive = true
-        task.spawn(function()
-            SkidFling(trollTarget)
-            FlingActive = false
-            UpdateStatus()
+        -- === Dropdown ===
+        local Dropdown = Tabs.TrollingTab:Dropdown({
+            Title = "Players",
+            Values = updateTrollingPlayers(),
+            Multi = false,
+            Value = "Select Player",
+            Callback = function(selected)
+                if selected ~= "Select Player" then
+                    trollTarget = Players:FindFirstChild(selected)
+                else
+                    trollTarget = nil
+                end
+        end
+    })
+
+        -- Автообновление игроков
+        Players.PlayerAdded:Connect(function()
+            task.wait(1)
+            Dropdown:SetValues(updateTrollingPlayers())
         end)
-    end
-})
 
-	local Section = Tabs.TrollingTab:Section({ 
-		Title = "Fling roles",
-		TextXAlignment = "Left",
-		TextSize = 17,
-	})
+        Players.PlayerRemoving:Connect(function()
+            Dropdown:SetValues(updateTrollingPlayers())
+        end)
 
-    local Button = Tabs.TrollingTab:Button({
-        Title = "Fling Sheriff",
-        Desc = "",
-		Locked = false,
-        Callback = function()
-            local sheriff = nil
-            local players = game:GetService("Players")
+        -- === Notification ===
+        local function Message(Title, Text, Time)
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = Title,
+                Text = Text,
+                Duration = Time or 5
+            })
+        end
 
-            
-            for _, player in ipairs(players:GetPlayers()) do
-                if player ~= game.Players.LocalPlayer and player.Character then
-                    local hasGunInChar = player.Character:FindFirstChild("Gun")
-                    local hasGunInBackpack = player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Gun")
+                    -----=----- Типа Логика Fling-------
+            local function SkidFling(TargetPlayer)
+            local Character = LocalPlayer.Character
+            local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+            local RootPart = Humanoid and Humanoid.RootPart
+            local TCharacter = TargetPlayer and TargetPlayer.Character
+            if not TCharacter then return end
 
-                    if hasGunInChar or hasGunInBackpack then
-                        sheriff = player
-                        break
-                    end
+            local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+            local TRootPart = THumanoid and THumanoid.RootPart
+            local THead = TCharacter:FindFirstChild("Head")
+            local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+            local Handle = Accessory and Accessory:FindFirstChild("Handle")
+
+            if Character and Humanoid and RootPart then
+                if RootPart.Velocity.Magnitude < 50 then
+                    getgenv().OldPos = RootPart.CFrame
                 end
-            end
 
-            
-            if sheriff then
+                if THumanoid and THumanoid.Sit then
+                    return 
+                    WindUI:Notify({
+                        Title = "Error",
+                        Content = TargetPlayer.Name .. " is sitting",
+                        Duration = 3,
+                    })
+                end
+
+                -- Камера
+                if THead then
+                    workspace.CurrentCamera.CameraSubject = THead
+                elseif Handle then
+                    workspace.CurrentCamera.CameraSubject = Handle
+                elseif THumanoid and TRootPart then
+                    workspace.CurrentCamera.CameraSubject = THumanoid
+                end
+
+                if not TCharacter:FindFirstChildWhichIsA("BasePart") then return end
+
+                local FPos = function(BasePart, Pos, Ang)
+                    RootPart.CFrame = CFrame.new(BasePart.Position) * Pos * Ang
+                    Character:SetPrimaryPartCFrame(CFrame.new(BasePart.Position) * Pos * Ang)
+                    RootPart.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+                    RootPart.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+                end
+
+                local SFBasePart = function(BasePart)
+                    local TimeToWait = 2
+                    local Time = tick()
+                    local Angle = 0
+                    repeat
+                        if RootPart and THumanoid then
+                            if BasePart.Velocity.Magnitude < 50 then
+                                Angle = Angle + 100
+                                FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle),0 ,0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle),0 ,0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                                task.wait()
+                            else
+                                FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                                task.wait()
+                                
+                                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                                task.wait()
+                                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                                task.wait()
+                            end
+                        end
+                    until Time + TimeToWait < tick() or not FlingActive
+                end
+
+                workspace.FallenPartsDestroyHeight = 0/0
+
+                local BV = Instance.new("BodyVelocity")
+                BV.Parent = RootPart
+                BV.Velocity = Vector3.new(0, 0, 0)
+                BV.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+                Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+
+                if TRootPart then
+                    SFBasePart(TRootPart)
+                elseif THead then
+                    SFBasePart(THead)
+                elseif Handle then
+                    SFBasePart(Handle)
+                else
+                    return 
+                    WindUI:Notify({
+                        Title = "Error",
+                        Content = TargetPlayer.Name .. " has no valid parts",
+                        Duration = 3,
+                    })
+                end
+
+                BV:Destroy()
+                Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+                workspace.CurrentCamera.CameraSubject = Humanoid
+
+                if getgenv().OldPos then
+                    repeat
+                        RootPart.CFrame = getgenv().OldPos * CFrame.new(0, .5, 0)
+                        Character:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, .5, 0))
+                        Humanoid:ChangeState("GettingUp")
+                        for _, part in pairs(Character:GetChildren()) do
+                            if part:IsA("BasePart") then
+                                part.Velocity, part.RotVelocity = Vector3.new(), Vector3.new()
+                            end
+                        end
+                        task.wait()
+                    until (RootPart.Position - getgenv().OldPos.p).Magnitude < 25
+                    workspace.FallenPartsDestroyHeight = getgenv().FPDH
+                end
+            else
+                return
+                    WindUI:Notify({
+                        Title = "Error",
+                        Content = "Your character is not ready",
+                        Duration = 3,
+                    })
+            end
+        end
+
+        local Button = Tabs.TrollingTab:Button({
+            Title = "Fling Target",
+            Desc = "",
+            Locked = false,
+            Callback = function()
+                if not trollTarget or not trollTarget:IsA("Player") then
+                    return 
+                        WindUI:Notify({
+                            Title = "Error",
+                            Content = "No Player selected",
+                            Duration = 3,
+                    })
+                end
+
                 FlingActive = true
                 task.spawn(function()
-                    SkidFling(sheriff)
+                    SkidFling(trollTarget)
                     FlingActive = false
                     UpdateStatus()
                 end)
-            else
-                WindUI:Notify({
-					Title = "Info",
-					Content = "Sheriff not found",
-					Duration = 3,
-				})
             end
-        end
-    })
+        })
 
+        Tabs.TrollingTab:Section({
+            Title = gradient("Fling Roles", Color3.fromHex("#561082"), Color3.fromHex("#823f10"))
+        })
 
-    local Button = Tabs.TrollingTab:Button({
-        Title = "Fling Murderer",
-        Description = "",
-		Locked = false,
-        Callback = function()
-            local murderer = nil
-            local players = game:GetService("Players")
+        local Button = Tabs.TrollingTab:Button({
+            Title = "Fling Sheriff",
+            Desc = "",
+            Locked = false,
+            Callback = function()
+                local sheriff = nil
+                local players = game:GetService("Players")
 
-            
-            for _, player in ipairs(players:GetPlayers()) do
-                if player ~= game.Players.LocalPlayer and player.Character then
-                    local hasKnifeInChar = player.Character:FindFirstChild("Knife")
-                    local hasKnifeInBackpack = player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Knife")
+                
+                for _, player in ipairs(players:GetPlayers()) do
+                    if player ~= game.Players.LocalPlayer and player.Character then
+                        local hasGunInChar = player.Character:FindFirstChild("Gun")
+                        local hasGunInBackpack = player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Gun")
 
-                    if hasKnifeInChar or hasKnifeInBackpack then
-                        murderer = player
-                        break
+                        if hasGunInChar or hasGunInBackpack then
+                            sheriff = player
+                            break
+                        end
                     end
                 end
-            end
 
-            
-            if murderer then
-                FlingActive = true
-                task.spawn(function()
-                    SkidFling(murderer)
-                    FlingActive = false
-                    UpdateStatus()
-                end)
-            else
-				WindUI:Notify({
-					Title = "Info",
-					Content = "Murder not found",
-					Duration = 3,
-				})
+                
+                if sheriff then
+                    FlingActive = true
+                    task.spawn(function()
+                        SkidFling(sheriff)
+                        FlingActive = false
+                        UpdateStatus()
+                    end)
+                else
+                    WindUI:Notify({
+                        Title = "Info",
+                        Content = "Sheriff not found",
+                        Duration = 3,
+                    })
+                end
             end
-        end
-    })
+        })
+
+
+        local Button = Tabs.TrollingTab:Button({
+            Title = "Fling Murderer",
+            Description = "",
+            Locked = false,
+            Callback = function()
+                local murderer = nil
+                local players = game:GetService("Players")
+
+                
+                for _, player in ipairs(players:GetPlayers()) do
+                    if player ~= game.Players.LocalPlayer and player.Character then
+                        local hasKnifeInChar = player.Character:FindFirstChild("Knife")
+                        local hasKnifeInBackpack = player:FindFirstChild("Backpack") and player.Backpack:FindFirstChild("Knife")
+
+                        if hasKnifeInChar or hasKnifeInBackpack then
+                            murderer = player
+                            break
+                        end
+                    end
+                end
+
+                
+                if murderer then
+                    FlingActive = true
+                    task.spawn(function()
+                        SkidFling(murderer)
+                        FlingActive = false
+                        UpdateStatus()
+                    end)
+                else
+                    WindUI:Notify({
+                        Title = "Info",
+                        Content = "Murder not found",
+                        Duration = 3,
+                    })
+                end
+            end
+        })
 
 
 
@@ -2311,10 +2317,8 @@ end
 
 	do
             --// AutoFarm System (Mobile Adapted, FIXED PATHS)
-            local Section = Tabs.AutoFarmTab:Section({ 
-                Title = "AutoFarm",
-                TextXAlignment = "Left",
-                TextSize = 17,
+            Tabs.AutoFarmTab:Section({
+                Title = gradient("AutoFarm", Color3.fromHex("#ad56e3"), Color3.fromHex("#5698e3"))
             })
 
             local Players = game:GetService("Players")
@@ -2636,11 +2640,10 @@ end
 		end
 
 		-- Создание секции Tracker
-		local Section = Tabs.SpectatorTab:Section({ 
-			Title = "Tracker",
-			TextXAlignment = "Left",
-			TextSize = 17
-		})
+
+        Tabs.SpectatorTab:Section({
+            Title = gradient("Tracker", Color3.fromHex("#cf2db4"), Color3.fromHex("#2dcfc4"))
+        })
 
 		-- Создание Dropdown для выбора игрока
 		local selectedPlayerName = nil
@@ -2678,11 +2681,9 @@ end
 		})
 
 		-- Секция для ролей
-		local SectionRoles = Tabs.SpectatorTab:Section({ 
-			Title = "Spectate to roles",
-			TextXAlignment = "Left",
-			TextSize = 17
-		})
+        Tabs.SpectatorTab:Section({
+            Title = gradient("spectate to roles", Color3.fromHex("#1233db"), Color3.fromHex("#d8db12"))
+        })
 
 		-- Кнопка: Следить за шерифом
 		Tabs.SpectatorTab:Button({
@@ -2723,12 +2724,10 @@ end
 		})
 
 		-- Секция для возврата к себе
-		local SectionSelf = Tabs.SpectatorTab:Section({ 
-			Title = "Spectate to yourself",
-			TextXAlignment = "Left",
-			TextSize = 17
-		})
-
+        Tabs.SpectatorTab:Section({
+            Title = gradient("Spectate to yourself", Color3.fromHex("#db1241"), Color3.fromHex("#4712db"))
+        })
+        
 		-- Кнопка: Вернуться к себе
 		Tabs.SpectatorTab:Button({
 			Title = "Return to yourself",
@@ -2756,12 +2755,9 @@ end
 			-------------OtherTab--------------------
 
 	do
-		
-		local Section = Tabs.OtherTab:Section({ 
-			Title = "Other",
-			TextXAlignment = "Left",
-			TextSize = 17, -- Default Size
-		})
+        Tabs.OtherTab:Section({
+            Title = gradient("Other", Color3.fromHex("#1291db"), Color3.fromHex("#12db62"))
+        })
 
 		-- == Anti-AFK ==
 		local VirtualUser = game:GetService("VirtualUser")
@@ -2832,11 +2828,9 @@ end
 		
 
 		-- == X-ray ==
-		local Section = Tabs.OtherTab:Section({ 
-			Title = "X-ray",
-			TextXAlignment = "Left",
-			TextSize = 17, -- Default Size
-		})
+		Tabs.OtherTab:Section({
+            Title = gradient("X-ray", Color3.fromHex("#12dbc4"), Color3.fromHex("#2212db"))
+        })
 
 		local Workspace = game:GetService("Workspace")
 		local LP = Players.LocalPlayer
@@ -2922,13 +2916,9 @@ end
 			---------ServerTab-------------
 
 	do	
-						-- Создаём секцию
-			local Section = Tabs.ServerTab:Section({ 
-				Title = "Actions with the server",
-				TextXAlignment = "Left",
-				TextSize = 17,
-			})
-
+            Tabs.ServerTab:Section({
+                Title = gradient("Actions with the server", Color3.fromHex("#d1de43"), Color3.fromHex("#8a1e25"))
+            })
 
 			-- == Rejoin ==
 			local function RejoinGame()
@@ -3007,7 +2997,7 @@ end
 
 		-------------------SettingsTab-=---=--=
 	do
-			local HttpService = game:GetService("HttpService");
+		local HttpService = game:GetService("HttpService");
 		local folderPath = "WindUI";
 		makefolder(folderPath);
 		local function SaveFile(fileName, data)
@@ -3032,9 +3022,9 @@ end
 			end
 			return files;
 		end
-		Tabs.SettingsTab:Section({
-			Title = "Window"
-		});
+        Tabs.SettingsTab:Section({
+            Title = gradient("Window", Color3.fromHex("#cc46e0"), Color3.fromHex("#6546e0"))
+        });
 		local themeValues = {};
 		for name, _ in pairs(WindUI:GetThemes()) do
 			table.insert(themeValues, name);
@@ -3057,9 +3047,9 @@ end
 			end,
 			Value = WindUI:GetTransparency()
 		});
-		Tabs.SettingsTab:Section({
-			Title = "Save"
-		});
+        Tabs.SettingsTab:Section({
+            Title = gradient("Save", Color3.fromHex("#3ba33e"), Color3.fromHex("#9a3ba3"))
+        });
 		local fileNameInput = "";
 		Tabs.SettingsTab:Input({
 			Title = "Write File Name",
@@ -3079,9 +3069,9 @@ end
 				end
 			end
 		});
-		Tabs.SettingsTab:Section({
-			Title = "Load"
-		});
+        Tabs.SettingsTab:Section({
+            Title = gradient("Load", Color3.fromHex("#493ba3"), Color3.fromHex("#7e2ce8"))
+        });
 		local filesDropdown;
 		local files = ListFiles();
 		filesDropdown = Tabs.SettingsTab:Dropdown({
