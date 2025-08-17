@@ -1476,12 +1476,13 @@ end
 		local function CreateShotButton()
 			if shotButtonActive then return end
 
-			local screenGui = game:GetService("CoreGui"):FindFirstChild("WindUI_SheriffGui") or Instance.new("ScreenGui")
-			screenGui.Name = "WindUI_SheriffGui"
-			screenGui.Parent = game:GetService("CoreGui")
-			screenGui.ResetOnSpawn = false
-			screenGui.DisplayOrder = 999
-			screenGui.IgnoreGuiInset = true
+		local screenGui = game:GetService("CoreGui"):FindFirstChild("ShotMurderGui") or Instance.new("ScreenGui")
+		screenGui.Name = "ShotMurderGui"
+		screenGui.Parent = game:GetService("CoreGui")
+		screenGui.ResetOnSpawn = false
+		screenGui.DisplayOrder = 50
+		screenGui.IgnoreGuiInset = false
+
 
 			shotButtonFrame = Instance.new("Frame")
 			shotButtonFrame.Name = "ShotButtonFrame"
