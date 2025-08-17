@@ -87,6 +87,293 @@ do
         SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" }),
 	};
 	
+	-- Shot button (fixed, mobile-friendly, non-destructive)
+	do
+		local Players = game:GetService("Players")
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		local UserInputService = game:GetService("UserInputService")
+		local TweenService = game:GetService("TweenService")
+		local LP = Players.LocalPlayer
+
+		local SHOT_GUI_NAME = "ShotMurderGui_v2" -- уникальное имя, чтобы не конфликтовать
+		local shotButtonFrame, shotButton = nil, nil
+		local shotButtonActive = false
+		local buttonSize = 60
+		local lastNotifyAt = 0
+		local NOTIFY_COOLDOWN = 1.5 -- секунды между уведомлениями
+
+		local function safeNotify(tbl)
+			-- tbl = { Title=..., Content=..., Icon=..., Duration=... }
+			if tick() - lastNotifyAt < NOTIFY_COOLDOWN then return end
+			lastNotifyAt = tick()
+			pcall(function() WindUI:Notify(tbl) end)
+		end
+
+		local function findKnifeRemote(gun)
+			if not gun then return nil end
+			-- Сначала по ожидаемой структуре
+			local ok, knifeLocal = pcall(function() return gun:FindFirstChild("KnifeLocal") end)
+			if ok and knifeLocal then
+				local cb = knifeLocal:FindFirstChild("CreateBeam")
+				if cb then
+					local rf = cb:FindFirstChildWhichIsA("RemoteFunction")
+					if rf then return rf end
+				end
+			end
+			-- Ищем первый RemoteFunction/RemoteEvent в потомках с подходящим именем
+			for _, d in ipairs(gun:GetDescendants()) do
+				if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
+					local name = (d.Name or ""):lower()
+					if name:find("create") or name:find("beam") or name:find("knife") or name:find("fire") then
+						return d
+					end
+				end
+			end
+			-- fallback — первый найденный
+			for _, d in ipairs(gun:GetDescendants()) do
+				if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
+					return d
+				end
+			end
+			return nil
+		end
+
+		local function getMurdererFromServer()
+			local rf = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+			if not rf then return nil end
+			local ok, data = pcall(function() return rf:InvokeServer() end)
+			if not ok or type(data) ~= "table" then return nil end
+			for name, info in pairs(data) do
+				if info and info.Role == "Murderer" then
+					return Players:FindFirstChild(name)
+				end
+			end
+			return nil
+		end
+
+		local function performShotAction()
+			-- анимация нажатия и реальный вызов ремота (в pcall)
+			if not LP.Character or not LP.Character:FindFirstChildOfClass("Humanoid") then return end
+
+			local murderer = getMurdererFromServer()
+			if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
+				safeNotify({ Title = "Sheriff", Content = "Murderer not found", Icon = "x", Duration = 2 })
+				return
+			end
+
+			-- берем Gun (если есть), пытаемся найти Remote и вызвать
+			local gun = LP.Character:FindFirstChild("Gun") or LP.Backpack:FindFirstChild("Gun")
+			if not gun then
+				safeNotify({ Title = "Sheriff", Content = "No gun found", Icon = "x", Duration = 2 })
+				return
+			end
+
+			-- эквипим, если в рюкзаке
+			if gun.Parent ~= LP.Character then
+				pcall(function() gun.Parent = LP.Character end)
+				task.wait(0.02)
+			end
+
+			local targetPart = murderer.Character:FindFirstChild("HumanoidRootPart")
+			if not targetPart then return end
+
+			local remote = findKnifeRemote(gun)
+			if remote then
+				pcall(function()
+					if remote:IsA("RemoteFunction") then
+						remote:InvokeServer(10, targetPart.Position, "AH2")
+					else
+						remote:FireServer(10, targetPart.Position, "AH2")
+					end
+				end)
+				safeNotify({ Title = "Sheriff", Content = "Shot invoked", Icon = "check-circle", Duration = 1.2 })
+				return
+			end
+
+			-- fallback: если ремота нет, просто вызываем Activate на инструменте (локально)
+			pcall(function() 
+				if typeof(gun.Activate) == "function" then 
+					gun:Activate() 
+				elseif gun:FindFirstChild("KnifeLocal") then 
+					local ok, cl = pcall(function() return gun.KnifeLocal.CreateBeam.RemoteFunction end)
+					if ok and cl then pcall(function() cl:InvokeServer(10, targetPart.Position, "AH2") end) end
+				end
+			end)
+			safeNotify({ Title = "Sheriff", Content = "Shot (fallback) attempted", Icon = "check-circle", Duration = 1.2 })
+		end
+
+		local function clampToViewport(x, y, guiSize)
+			local vx, vy = guiSize.X, guiSize.Y
+			x = math.clamp(x, 0, vx - buttonSize)
+			y = math.clamp(y, 0, vy - buttonSize)
+			return x, y
+		end
+
+		local function CreateShotButton()
+			if shotButtonActive then return end
+			local playerGui = LP:WaitForChild("PlayerGui")
+
+			-- Если уже есть — используем, иначе создаём чистый ScreenGui в PlayerGui
+			local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
+			if not screenGui then
+				screenGui = Instance.new("ScreenGui")
+				screenGui.Name = SHOT_GUI_NAME
+				screenGui.ResetOnSpawn = false
+				screenGui.IgnoreGuiInset = false
+				screenGui.Parent = playerGui
+				-- DisplayOrder небольшой, чтобы не мешать другим UI
+				screenGui.DisplayOrder = 50
+			end
+
+			shotButtonFrame = Instance.new("Frame")
+			shotButtonFrame.Name = "ShotButtonFrame"
+			shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+			shotButtonFrame.Position = UDim2.new(1, -buttonSize - 20, 0.5, -buttonSize/2)
+			shotButtonFrame.AnchorPoint = Vector2.new(1, 0.5)
+			shotButtonFrame.BackgroundTransparency = 1
+			shotButtonFrame.ZIndex = 100
+			shotButtonFrame.Parent = screenGui
+
+			-- тень (не перекрывающая всё)
+			local shadow = Instance.new("ImageLabel")
+			shadow.Name = "Shadow"
+			shadow.Size = UDim2.new(1.2, 0, 1.2, 0)
+			shadow.Position = UDim2.new(0.5, 0, 0.5, 6)
+			shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+			shadow.BackgroundTransparency = 1
+			shadow.Image = "rbxassetid://1316045217"
+			shadow.ImageColor3 = Color3.new(0,0,0)
+			shadow.ImageTransparency = 0.75
+			shadow.ScaleType = Enum.ScaleType.Slice
+			shadow.SliceCenter = Rect.new(10,10,118,118)
+			shadow.ZIndex = 99
+			shadow.Parent = shotButtonFrame
+
+			shotButton = Instance.new("TextButton")
+			shotButton.Name = "SheriffShotButton"
+			shotButton.Size = UDim2.new(1, 0, 1, 0)
+			shotButton.Position = UDim2.new(0, 0, 0, 0)
+			shotButton.BackgroundColor3 = Color3.fromRGB(20, 22, 25)
+			shotButton.BackgroundTransparency = 0
+			shotButton.Text = "⚡"
+			shotButton.TextColor3 = Color3.fromRGB(255,255,255)
+			shotButton.TextSize = 26
+			shotButton.Font = Enum.Font.GothamBold
+			shotButton.BorderSizePixel = 0
+			shotButton.ZIndex = 101
+			shotButton.AutoButtonColor = false
+			shotButton.TextScaled = true
+			shotButton.Parent = shotButtonFrame
+
+			-- круглая форма
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(1, 0)
+			corner.Parent = shotButton
+
+			-- тонкий ободок
+			local stroke = Instance.new("UIStroke")
+			stroke.Thickness = 2
+			stroke.Color = Color3.fromRGB(0, 120, 255)
+			stroke.Transparency = 0.25
+			stroke.Parent = shotButton
+
+			-- градиент
+			local gradient = Instance.new("UIGradient")
+			gradient.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromRGB(0,160,255)),
+				ColorSequenceKeypoint.new(1, Color3.fromRGB(0,220,140))
+			})
+			gradient.Rotation = 45
+			gradient.Parent = shotButton
+
+			-- Анимация нажатия
+			local function animatePress()
+				local down = TweenService:Create(shotButton, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {Size = UDim2.new(0.92,0,0.92,0), BackgroundTransparency = 0.05})
+				local up = TweenService:Create(shotButton, TweenInfo.new(0.18, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 0})
+				down:Play(); down.Completed:Wait(); up:Play()
+			end
+
+			shotButton.MouseButton1Click:Connect(function()
+				animatePress()
+				performShotAction()
+			end)
+
+			-- Drag (поддерживает мышь и тач)
+			local dragging = false
+			local dragStartPos, startPos = nil, nil
+			shotButton.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					dragging = true
+					dragStartPos = input.Position
+					startPos = shotButtonFrame.Position
+					input.Changed:Connect(function()
+						if input.UserInputState == Enum.UserInputState.End then
+							dragging = false
+						end
+					end)
+				end
+			end)
+			shotButton.InputChanged:Connect(function(input)
+				if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+					local delta = input.Position - dragStartPos
+					-- получаем viewport size (работает и на мобильных)
+					local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720)
+					local sx = (startPos.X.Offset + delta.X)
+					local sy = (startPos.Y.Offset + delta.Y)
+					sx, sy = clampToViewport(sx, sy, vs)
+					shotButtonFrame.Position = UDim2.new(0, sx, 0, sy)
+				end
+			end)
+
+			shotButtonActive = true
+			safeNotify({ Title = "Sheriff System", Content = "Shot button activated", Icon = "check-circle", Duration = 2 })
+		end
+
+		local function RemoveShotButton()
+			if not shotButtonActive then return end
+			local playerGui = LP:FindFirstChild("PlayerGui")
+			if playerGui then
+				local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
+				if screenGui then
+					screenGui:Destroy()
+				end
+			end
+			shotButtonFrame, shotButton = nil, nil
+			shotButtonActive = false
+			safeNotify({ Title = "Sheriff System", Content = "Shot button removed", Icon = "x", Duration = 1.2 })
+		end
+
+		-- Toggle UI control (создаёт/удаляет)
+		Tabs.CombatTab:Toggle({
+			Title = "Toggle Shot Button (Mobile)",
+			Desc = "Создаёт кнопку для выстрела (поддержка touch).",
+			Default = false,
+			Callback = function(state)
+				if state then
+					CreateShotButton()
+				else
+					RemoveShotButton()
+				end
+			end
+		})
+
+		-- Slider (меняет размер без пересоздания), не спамит уведомления
+		Tabs.CombatTab:Slider({
+			Title = "Button Size",
+			Step = 5,
+			Value = { Min = 40, Max = 150, Default = buttonSize },
+			Callback = function(size)
+				buttonSize = math.floor(size)
+				if shotButtonFrame then
+					shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+					-- если хотим, можно подвинуть AnchorPoint/Position обработать краевые случаи
+				end
+				-- не спамим уведомления каждый кадр — показываем только если прошло > NOTIFY_COOLDOWN
+				safeNotify({ Title = "Sheriff System", Content = "Button size: " .. tostring(buttonSize), Icon = "check-circle", Duration = 1.2 })
+			end
+		})
+	end
+
 
 
 
@@ -646,188 +933,196 @@ do
 
 			------TeleportTab---
 
-do
-	
-	local Section = Tabs.TeleportTab:Section({ 
-		Title = "Teleport to a person",
-		TextXAlignment = "Left",
-		TextSize = 17,
-	})
+	do
+		
+		local Section = Tabs.TeleportTab:Section({ 
+			Title = "Teleport to a person",
+			TextXAlignment = "Left",
+			TextSize = 17,
+		})
 
-	local Players = game:GetService("Players")
-	local LocalPlayer = Players.LocalPlayer
-	local teleportTarget = nil
+		local Players = game:GetService("Players")
+		local LocalPlayer = Players.LocalPlayer
+		local teleportTarget = nil
 
-	-- Функция обновления списка игроков
-	local function updateTeleportPlayers()
-		local playersList = {"Select Player"}
-		for _, player in ipairs(Players:GetPlayers()) do
-			if player ~= LocalPlayer then
-				table.insert(playersList, player.Name)
+		-- Функция обновления списка игроков
+		local function updateTeleportPlayers()
+			local playersList = {"Select Player"}
+			for _, player in ipairs(Players:GetPlayers()) do
+				if player ~= LocalPlayer then
+					table.insert(playersList, player.Name)
+				end
 			end
+			return playersList
 		end
-		return playersList
-	end
 
-	-- Создание выпадающего списка
-	local Dropdown = Tabs.TeleportTab:Dropdown({
-		Title = "Players",
-		Values = updateTeleportPlayers(),
-		Value = "Select Player",
-		Multi = false,
-		Callback = function(selected)
-			if selected ~= "Select Player" then
-				teleportTarget = Players:FindFirstChild(selected)
+		-- Создание выпадающего списка
+		local Dropdown = Tabs.TeleportTab:Dropdown({
+			Title = "Players",
+			Values = updateTeleportPlayers(),
+			Value = "Select Player",
+			Multi = false,
+			Callback = function(selected)
+				if selected ~= "Select Player" then
+					teleportTarget = Players:FindFirstChild(selected)
+				else
+					teleportTarget = nil
+				end
+			end
+		})
+
+		-- Автообновление списка игроков
+		Players.PlayerAdded:Connect(function()
+			task.wait(1)
+			Dropdown:SetValues(updateTeleportPlayers())
+		end)
+
+		Players.PlayerRemoving:Connect(function()
+			Dropdown:SetValues(updateTeleportPlayers())
+		end)
+
+		-- Логика телепорта
+		local function teleportToPlayer()
+			if teleportTarget and teleportTarget.Character then
+				local targetRoot = teleportTarget.Character:FindFirstChild("HumanoidRootPart")
+				local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+				
+				if targetRoot and localRoot then
+					localRoot.CFrame = targetRoot.CFrame
+					WindUI:Notify({
+						Title = "Teleport",
+						Content = "Successfully teleported to "..teleportTarget.Name,
+						Duration = 3
+					})
+				end
 			else
-				teleportTarget = nil
-			end
-		end
-	})
-
-	-- Автообновление списка игроков
-	Players.PlayerAdded:Connect(function()
-		task.wait(1)
-		Dropdown:SetValues(updateTeleportPlayers())
-	end)
-
-	Players.PlayerRemoving:Connect(function()
-		Dropdown:SetValues(updateTeleportPlayers())
-	end)
-
-	-- Логика телепорта
-	local function teleportToPlayer()
-		if teleportTarget and teleportTarget.Character then
-			local targetRoot = teleportTarget.Character:FindFirstChild("HumanoidRootPart")
-			local localRoot = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-			
-			if targetRoot and localRoot then
-				localRoot.CFrame = targetRoot.CFrame
 				WindUI:Notify({
-					Title = "Teleport",
-					Content = "Successfully teleported to "..teleportTarget.Name,
+					Title = "Error",
+					Content = "Target not found or unavailable",
 					Duration = 3
 				})
 			end
-		else
-			WindUI:Notify({
-				Title = "Error",
-				Content = "Target not found or unavailable",
-				Duration = 3
-			})
 		end
-	end
 
-	-- Кнопка для телепорта
-	Tabs.TeleportTab:Button({
-		Title = "Teleport to Selected",
-		Locked = false,
-		Callback = teleportToPlayer
-	})
+		-- Кнопка для телепорта
+		Tabs.TeleportTab:Button({
+			Title = "Teleport to Selected",
+			Locked = false,
+			Callback = teleportToPlayer
+		})
 
-	-- Кнопка обновления списка игроков
-	Tabs.TeleportTab:Button({
-		Title = "Update players list",
-		Locked = false,
-		Callback = function()
-			Dropdown:SetValues(updateTeleportPlayers())
-		end
-	})
+		-- Кнопка обновления списка игроков
+		Tabs.TeleportTab:Button({
+			Title = "Update players list",
+			Locked = false,
+			Callback = function()
+				Dropdown:SetValues(updateTeleportPlayers())
+			end
+		})
 
-	-- Быстрые телепорты
-	Tabs.TeleportTab:Section({ Title = "Teleport to", TextXAlignment = "Left", TextSize = 17 })
+		-- Быстрые телепорты
+		Tabs.TeleportTab:Section({ Title = "Teleport to", TextXAlignment = "Left", TextSize = 17 })
 
-	Tabs.TeleportTab:Button({
-		Title = "Teleport to Lobby",
-		Description = "Teleport to the main lobby area",
-		Callback = function()
-			LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(112.961197, 140.252960, 46.383835)
-		end
-	})
+		Tabs.TeleportTab:Button({
+			Title = "Teleport to Lobby",
+			Description = "Teleport to the main lobby area",
+			Callback = function()
+				LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(112.961197, 140.252960, 46.383835)
+			end
+		})
 
-	Tabs.TeleportTab:Button({
-		Title = "Teleport to Sheriff",
-		Callback = function()
-			for _, v in pairs(Players:GetPlayers()) do
-				if v.Character and (v.Character:FindFirstChild("Gun") or (v.Backpack and v.Backpack:FindFirstChild("Gun"))) then
-					LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame
-					break
+		Tabs.TeleportTab:Button({
+			Title = "Teleport to Sheriff",
+			Callback = function()
+				for _, v in pairs(Players:GetPlayers()) do
+					if v.Character and (v.Character:FindFirstChild("Gun") or (v.Backpack and v.Backpack:FindFirstChild("Gun"))) then
+						LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame
+						break
+					end
 				end
 			end
-		end
-	})
+		})
 
-	Tabs.TeleportTab:Button({
-		Title = "Teleport to Murderer",
-		Callback = function()
-			for _, v in pairs(Players:GetPlayers()) do
-				if v.Character and (v.Character:FindFirstChild("Knife") or (v.Backpack and v.Backpack:FindFirstChild("Knife"))) then
-					LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame
-					break
+		Tabs.TeleportTab:Button({
+			Title = "Teleport to Murderer",
+			Callback = function()
+				for _, v in pairs(Players:GetPlayers()) do
+					if v.Character and (v.Character:FindFirstChild("Knife") or (v.Backpack and v.Backpack:FindFirstChild("Knife"))) then
+						LocalPlayer.Character.HumanoidRootPart.CFrame = v.Character.HumanoidRootPart.CFrame
+						break
+					end
 				end
 			end
-		end
-	})
+		})
 
-	-- ================== GrabGun ==================
-	Tabs.TeleportTab:Section({ Title = "GrabGun", TextXAlignment = "Left", TextSize = 17 })
+		-- ================== GrabGun ==================
+		Tabs.TeleportTab:Section({ Title = "GrabGun", TextXAlignment = "Left", TextSize = 17 })
 
-	local gunDropESPEnabled = true
-	local autoGrabEnabled = false
-	local notifiedGunDrops = {}
-	local autoGrabLocked = false
-	local lastGrabTime = 0
-	local grabAttempts = 0
+		local gunDropESPEnabled = true
+		local autoGrabEnabled = false
+		local notifiedGunDrops = {}
+		local autoGrabLocked = false
+		local lastGrabTime = 0
+		local grabAttempts = 0
 
-	local mapGunDrops = {
-		"ResearchFacility", "Hospital3", "MilBase", "House2", "Workplace",
-		"Mansion2", "BioLab", "Hotel", "Factory", "Bank2", "PoliceStation",
-		"Yacht", "Office3", "BeachResort"
-	}
+		local mapGunDrops = {
+			"ResearchFacility", "Hospital3", "MilBase", "House2", "Workplace",
+			"Mansion2", "BioLab", "Hotel", "Factory", "Bank2", "PoliceStation",
+			"Yacht", "Office3", "BeachResort"
+		}
 
-	local function grabGunFast(gunDrop)
-		if not gunDrop or not LocalPlayer.Character then return false end
-		if LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Gun") then 
-			return true
-		end
-		local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-		if not root then return false end
-
-		local originalCFrame = root.CFrame
-		root.CFrame = gunDrop.CFrame + Vector3.new(0, 2.5, 0)
-
-		task.delay(0.15, function()
-			if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-				LocalPlayer.Character.HumanoidRootPart.CFrame = originalCFrame
+		local function grabGunFast(gunDrop)
+			if not gunDrop or not LocalPlayer.Character then return false end
+			if LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Gun") then 
+				return true
 			end
-		end)
+			local root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+			if not root then return false end
 
-		task.wait(0.2)
-		return LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Gun")
-	end
+			local originalCFrame = root.CFrame
+			root.CFrame = gunDrop.CFrame + Vector3.new(0, 2.5, 0)
 
-	local function checkForGunDrops()
-		if autoGrabLocked then return end
-		if autoGrabEnabled and (tick() - lastGrabTime) < 2 then return end
+			task.delay(0.15, function()
+				if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+					LocalPlayer.Character.HumanoidRootPart.CFrame = originalCFrame
+				end
+			end)
 
-		for _, mapName in ipairs(mapGunDrops) do
-			local map = workspace:FindFirstChild(mapName)
-			if map then
-				local gunDrop = map:FindFirstChild("GunDrop")
-				if gunDrop then
-					if not notifiedGunDrops[gunDrop] then
-						notifiedGunDrops = {}
-						notifiedGunDrops[gunDrop] = true
+			task.wait(0.2)
+			return LocalPlayer.Backpack:FindFirstChild("Gun") or LocalPlayer.Character:FindFirstChild("Gun")
+		end
 
-						if gunDropESPEnabled then
-							WindUI:Notify({
-								Title = "Gun Drop Spawned",
-								Content = "A gun has appeared on the map: " .. mapName,
-								Icon = "alert-circle",
-								Duration = 5
-							})
-						end
+		local function checkForGunDrops()
+			if autoGrabLocked then return end
+			if autoGrabEnabled and (tick() - lastGrabTime) < 2 then return end
 
-						if autoGrabEnabled then
+			for _, mapName in ipairs(mapGunDrops) do
+				local map = workspace:FindFirstChild(mapName)
+				if map then
+					local gunDrop = map:FindFirstChild("GunDrop")
+					if gunDrop then
+						if not notifiedGunDrops[gunDrop] then
+							notifiedGunDrops = {}
+							notifiedGunDrops[gunDrop] = true
+
+							if gunDropESPEnabled then
+								WindUI:Notify({
+									Title = "Gun Drop Spawned",
+									Content = "A gun has appeared on the map: " .. mapName,
+									Icon = "alert-circle",
+									Duration = 5
+								})
+							end
+
+							if autoGrabEnabled then
+								lastGrabTime = tick()
+								grabAttempts += 1
+								local success = grabGunFast(gunDrop)
+								if success or grabAttempts >= 2 then
+									autoGrabLocked = true
+								end
+							end
+						elseif autoGrabEnabled then
 							lastGrabTime = tick()
 							grabAttempts += 1
 							local success = grabGunFast(gunDrop)
@@ -835,85 +1130,77 @@ do
 								autoGrabLocked = true
 							end
 						end
-					elseif autoGrabEnabled then
-						lastGrabTime = tick()
-						grabAttempts += 1
-						local success = grabGunFast(gunDrop)
-						if success or grabAttempts >= 2 then
-							autoGrabLocked = true
-						end
 					end
 				end
 			end
 		end
-	end
 
-	local function manualGrabGun()
-		for _, mapName in ipairs(mapGunDrops) do
-			local map = workspace:FindFirstChild(mapName)
-			if map then
-				local gunDrop = map:FindFirstChild("GunDrop")
-				if gunDrop then
-					grabGunFast(gunDrop)
-					return
+		local function manualGrabGun()
+			for _, mapName in ipairs(mapGunDrops) do
+				local map = workspace:FindFirstChild(mapName)
+				if map then
+					local gunDrop = map:FindFirstChild("GunDrop")
+					if gunDrop then
+						grabGunFast(gunDrop)
+						return
+					end
 				end
 			end
-		end
-		WindUI:Notify({
-			Title = "Gun System",
-			Content = "No GunDrop found on map",
-			Icon = "x",
-			Duration = 3
-		})
-	end
-
-	LocalPlayer.CharacterAdded:Connect(function()
-		autoGrabLocked = false
-		grabAttempts = 0
-	end)
-
-	-- UI Toggles
-	Tabs.TeleportTab:Toggle({
-		Title = "Notify GunDrop",
-		Default = true,
-		Callback = function(state)
-			gunDropESPEnabled = state
-		end
-	})
-
-	Tabs.TeleportTab:Toggle({
-		Title = "Auto Grab Gun",
-		Default = false,
-		Callback = function(state)
-			autoGrabEnabled = state
 			WindUI:Notify({
 				Title = "Gun System",
-				Content = autoGrabEnabled and "Auto Grab Gun enabled" or "Auto Grab Gun disabled",
-				Icon = autoGrabEnabled and "check-circle" or "x",
+				Content = "No GunDrop found on map",
+				Icon = "x",
 				Duration = 3
 			})
 		end
-	})
 
-	Tabs.TeleportTab:Button({
-		Title = "Grab Gun",
-		Callback = manualGrabGun
-	})
+		LocalPlayer.CharacterAdded:Connect(function()
+			autoGrabLocked = false
+			grabAttempts = 0
+		end)
 
-	-- Проверка каждые 0.3 сек
-	task.spawn(function()
-		if not LocalPlayer.Character then
-			LocalPlayer.CharacterAdded:Wait()
-		end
-		while task.wait(0.3) do
-			checkForGunDrops()
-		end
-	end)
+		-- UI Toggles
+		Tabs.TeleportTab:Toggle({
+			Title = "Notify GunDrop",
+			Default = true,
+			Callback = function(state)
+				gunDropESPEnabled = state
+			end
+		})
+
+		Tabs.TeleportTab:Toggle({
+			Title = "Auto Grab Gun",
+			Default = false,
+			Callback = function(state)
+				autoGrabEnabled = state
+				WindUI:Notify({
+					Title = "Gun System",
+					Content = autoGrabEnabled and "Auto Grab Gun enabled" or "Auto Grab Gun disabled",
+					Icon = autoGrabEnabled and "check-circle" or "x",
+					Duration = 3
+				})
+			end
+		})
+
+		Tabs.TeleportTab:Button({
+			Title = "Grab Gun",
+			Callback = manualGrabGun
+		})
+
+		-- Проверка каждые 0.3 сек
+		task.spawn(function()
+			if not LocalPlayer.Character then
+				LocalPlayer.CharacterAdded:Wait()
+			end
+			while task.wait(0.3) do
+				checkForGunDrops()
+			end
+		end)
 
 
 
 
-end
+	end
 
 			---------CombatTab--------
 
@@ -1459,292 +1746,12 @@ end
 			Title = gradient("Shot Button", Color3.fromHex("#001e80"), Color3.fromHex("#16f2d9"))
 		})
 
-		-- Shot button (fixed, mobile-friendly, non-destructive)
-			local Players = game:GetService("Players")
-			local ReplicatedStorage = game:GetService("ReplicatedStorage")
-			local UserInputService = game:GetService("UserInputService")
-			local TweenService = game:GetService("TweenService")
-			local LP = Players.LocalPlayer
+	
+	
+		
 
-			local SHOT_GUI_NAME = "ShotMurderGui_v2" -- уникальное имя, чтобы не конфликтовать
-			local shotButtonFrame, shotButton = nil, nil
-			local shotButtonActive = false
-			local buttonSize = 60
-			local lastNotifyAt = 0
-			local NOTIFY_COOLDOWN = 1.5 -- секунды между уведомлениями
 
-			local function safeNotify(tbl)
-				-- tbl = { Title=..., Content=..., Icon=..., Duration=... }
-				if tick() - lastNotifyAt < NOTIFY_COOLDOWN then return end
-				lastNotifyAt = tick()
-				pcall(function() WindUI:Notify(tbl) end)
-			end
-
-			local function findKnifeRemote(gun)
-				if not gun then return nil end
-				-- Сначала по ожидаемой структуре
-				local ok, knifeLocal = pcall(function() return gun:FindFirstChild("KnifeLocal") end)
-				if ok and knifeLocal then
-					local cb = knifeLocal:FindFirstChild("CreateBeam")
-					if cb then
-						local rf = cb:FindFirstChildWhichIsA("RemoteFunction")
-						if rf then return rf end
-					end
-				end
-				-- Ищем первый RemoteFunction/RemoteEvent в потомках с подходящим именем
-				for _, d in ipairs(gun:GetDescendants()) do
-					if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
-						local name = (d.Name or ""):lower()
-						if name:find("create") or name:find("beam") or name:find("knife") or name:find("fire") then
-							return d
-						end
-					end
-				end
-				-- fallback — первый найденный
-				for _, d in ipairs(gun:GetDescendants()) do
-					if d:IsA("RemoteFunction") or d:IsA("RemoteEvent") then
-						return d
-					end
-				end
-				return nil
-			end
-
-			local function getMurdererFromServer()
-				local rf = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
-				if not rf then return nil end
-				local ok, data = pcall(function() return rf:InvokeServer() end)
-				if not ok or type(data) ~= "table" then return nil end
-				for name, info in pairs(data) do
-					if info and info.Role == "Murderer" then
-						return Players:FindFirstChild(name)
-					end
-				end
-				return nil
-			end
-
-			local function performShotAction()
-				-- анимация нажатия и реальный вызов ремота (в pcall)
-				if not LP.Character or not LP.Character:FindFirstChildOfClass("Humanoid") then return end
-
-				local murderer = getMurdererFromServer()
-				if not murderer or not murderer.Character or not murderer.Character:FindFirstChild("HumanoidRootPart") then
-					safeNotify({ Title = "Sheriff", Content = "Murderer not found", Icon = "x", Duration = 2 })
-					return
-				end
-
-				-- берем Gun (если есть), пытаемся найти Remote и вызвать
-				local gun = LP.Character:FindFirstChild("Gun") or LP.Backpack:FindFirstChild("Gun")
-				if not gun then
-					safeNotify({ Title = "Sheriff", Content = "No gun found", Icon = "x", Duration = 2 })
-					return
-				end
-
-				-- эквипим, если в рюкзаке
-				if gun.Parent ~= LP.Character then
-					pcall(function() gun.Parent = LP.Character end)
-					task.wait(0.02)
-				end
-
-				local targetPart = murderer.Character:FindFirstChild("HumanoidRootPart")
-				if not targetPart then return end
-
-				local remote = findKnifeRemote(gun)
-				if remote then
-					pcall(function()
-						if remote:IsA("RemoteFunction") then
-							remote:InvokeServer(10, targetPart.Position, "AH2")
-						else
-							remote:FireServer(10, targetPart.Position, "AH2")
-						end
-					end)
-					safeNotify({ Title = "Sheriff", Content = "Shot invoked", Icon = "check-circle", Duration = 1.2 })
-					return
-				end
-
-				-- fallback: если ремота нет, просто вызываем Activate на инструменте (локально)
-				pcall(function() 
-					if typeof(gun.Activate) == "function" then 
-						gun:Activate() 
-					elseif gun:FindFirstChild("KnifeLocal") then 
-						local ok, cl = pcall(function() return gun.KnifeLocal.CreateBeam.RemoteFunction end)
-						if ok and cl then pcall(function() cl:InvokeServer(10, targetPart.Position, "AH2") end) end
-					end
-				end)
-				safeNotify({ Title = "Sheriff", Content = "Shot (fallback) attempted", Icon = "check-circle", Duration = 1.2 })
-			end
-
-			local function clampToViewport(x, y, guiSize)
-				local vx, vy = guiSize.X, guiSize.Y
-				x = math.clamp(x, 0, vx - buttonSize)
-				y = math.clamp(y, 0, vy - buttonSize)
-				return x, y
-			end
-
-			local function CreateShotButton()
-				if shotButtonActive then return end
-				local playerGui = LP:WaitForChild("PlayerGui")
-
-				-- Если уже есть — используем, иначе создаём чистый ScreenGui в PlayerGui
-				local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
-				if not screenGui then
-					screenGui = Instance.new("ScreenGui")
-					screenGui.Name = SHOT_GUI_NAME
-					screenGui.ResetOnSpawn = false
-					screenGui.IgnoreGuiInset = false
-					screenGui.Parent = playerGui
-					-- DisplayOrder небольшой, чтобы не мешать другим UI
-					screenGui.DisplayOrder = 50
-				end
-
-				shotButtonFrame = Instance.new("Frame")
-				shotButtonFrame.Name = "ShotButtonFrame"
-				shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-				shotButtonFrame.Position = UDim2.new(1, -buttonSize - 20, 0.5, -buttonSize/2)
-				shotButtonFrame.AnchorPoint = Vector2.new(1, 0.5)
-				shotButtonFrame.BackgroundTransparency = 1
-				shotButtonFrame.ZIndex = 100
-				shotButtonFrame.Parent = screenGui
-
-				-- тень (не перекрывающая всё)
-				local shadow = Instance.new("ImageLabel")
-				shadow.Name = "Shadow"
-				shadow.Size = UDim2.new(1.2, 0, 1.2, 0)
-				shadow.Position = UDim2.new(0.5, 0, 0.5, 6)
-				shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-				shadow.BackgroundTransparency = 1
-				shadow.Image = "rbxassetid://1316045217"
-				shadow.ImageColor3 = Color3.new(0,0,0)
-				shadow.ImageTransparency = 0.75
-				shadow.ScaleType = Enum.ScaleType.Slice
-				shadow.SliceCenter = Rect.new(10,10,118,118)
-				shadow.ZIndex = 99
-				shadow.Parent = shotButtonFrame
-
-				shotButton = Instance.new("TextButton")
-				shotButton.Name = "SheriffShotButton"
-				shotButton.Size = UDim2.new(1, 0, 1, 0)
-				shotButton.Position = UDim2.new(0, 0, 0, 0)
-				shotButton.BackgroundColor3 = Color3.fromRGB(20, 22, 25)
-				shotButton.BackgroundTransparency = 0
-				shotButton.Text = "⚡"
-				shotButton.TextColor3 = Color3.fromRGB(255,255,255)
-				shotButton.TextSize = 26
-				shotButton.Font = Enum.Font.GothamBold
-				shotButton.BorderSizePixel = 0
-				shotButton.ZIndex = 101
-				shotButton.AutoButtonColor = false
-				shotButton.TextScaled = true
-				shotButton.Parent = shotButtonFrame
-
-				-- круглая форма
-				local corner = Instance.new("UICorner")
-				corner.CornerRadius = UDim.new(1, 0)
-				corner.Parent = shotButton
-
-				-- тонкий ободок
-				local stroke = Instance.new("UIStroke")
-				stroke.Thickness = 2
-				stroke.Color = Color3.fromRGB(0, 120, 255)
-				stroke.Transparency = 0.25
-				stroke.Parent = shotButton
-
-				-- градиент
-				local gradient = Instance.new("UIGradient")
-				gradient.Color = ColorSequence.new({
-					ColorSequenceKeypoint.new(0, Color3.fromRGB(0,160,255)),
-					ColorSequenceKeypoint.new(1, Color3.fromRGB(0,220,140))
-				})
-				gradient.Rotation = 45
-				gradient.Parent = shotButton
-
-				-- Анимация нажатия
-				local function animatePress()
-					local down = TweenService:Create(shotButton, TweenInfo.new(0.08, Enum.EasingStyle.Quad), {Size = UDim2.new(0.92,0,0.92,0), BackgroundTransparency = 0.05})
-					local up = TweenService:Create(shotButton, TweenInfo.new(0.18, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out), {Size = UDim2.new(1,0,1,0), BackgroundTransparency = 0})
-					down:Play(); down.Completed:Wait(); up:Play()
-				end
-
-				shotButton.MouseButton1Click:Connect(function()
-					animatePress()
-					performShotAction()
-				end)
-
-				-- Drag (поддерживает мышь и тач)
-				local dragging = false
-				local dragStartPos, startPos = nil, nil
-				shotButton.InputBegan:Connect(function(input)
-					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-						dragging = true
-						dragStartPos = input.Position
-						startPos = shotButtonFrame.Position
-						input.Changed:Connect(function()
-							if input.UserInputState == Enum.UserInputState.End then
-								dragging = false
-							end
-						end)
-					end
-				end)
-				shotButton.InputChanged:Connect(function(input)
-					if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-						local delta = input.Position - dragStartPos
-						-- получаем viewport size (работает и на мобильных)
-						local vs = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280,720)
-						local sx = (startPos.X.Offset + delta.X)
-						local sy = (startPos.Y.Offset + delta.Y)
-						sx, sy = clampToViewport(sx, sy, vs)
-						shotButtonFrame.Position = UDim2.new(0, sx, 0, sy)
-					end
-				end)
-
-				shotButtonActive = true
-				safeNotify({ Title = "Sheriff System", Content = "Shot button activated", Icon = "check-circle", Duration = 2 })
-			end
-
-			local function RemoveShotButton()
-				if not shotButtonActive then return end
-				local playerGui = LP:FindFirstChild("PlayerGui")
-				if playerGui then
-					local screenGui = playerGui:FindFirstChild(SHOT_GUI_NAME)
-					if screenGui then
-						screenGui:Destroy()
-					end
-				end
-				shotButtonFrame, shotButton = nil, nil
-				shotButtonActive = false
-				safeNotify({ Title = "Sheriff System", Content = "Shot button removed", Icon = "x", Duration = 1.2 })
-			end
-
-			-- Toggle UI control (создаёт/удаляет)
-			Tabs.CombatTab:Toggle({
-				Title = "Toggle Shot Button (Mobile)",
-				Desc = "Создаёт кнопку для выстрела (поддержка touch).",
-				Default = false,
-				Callback = function(state)
-					if state then
-						CreateShotButton()
-					else
-						RemoveShotButton()
-					end
-				end
-			})
-
-			-- Slider (меняет размер без пересоздания), не спамит уведомления
-			Tabs.CombatTab:Slider({
-				Title = "Button Size",
-				Step = 5,
-				Value = { Min = 40, Max = 150, Default = buttonSize },
-				Callback = function(size)
-					buttonSize = math.floor(size)
-					if shotButtonFrame then
-						shotButtonFrame.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-						-- если хотим, можно подвинуть AnchorPoint/Position обработать краевые случаи
-					end
-					-- не спамим уведомления каждый кадр — показываем только если прошло > NOTIFY_COOLDOWN
-					safeNotify({ Title = "Sheriff System", Content = "Button size: " .. tostring(buttonSize), Icon = "check-circle", Duration = 1.2 })
-				end
-			})
-			
-end
+	
 
 
 		
