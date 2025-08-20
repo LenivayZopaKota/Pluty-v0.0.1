@@ -1902,7 +1902,7 @@ end
 			--// Toggle UI
 			local Toggle = Tabs.CombatTab:Toggle({
 				Title = "KillAll",
-				Desc = "Убивает всех Innocent/Sheriff через Remote",
+				Desc = "",
 				Default = false,
 				Callback = function(state)
 					KillAllEnabled = state
@@ -3167,5 +3167,6 @@ end
 
 end
 
-
-loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKotaWork/Pluty-Hub/refs/heads/main/Mobile%20qwerty.lua"))()
+do
+	loadstring(game:HttpGet("https://raw.githubusercontent.com/LenivayZopaKotaWork/Pluty-Hub/refs/heads/main/Mobile%20qwerty.lua"))()
+end
