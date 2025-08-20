@@ -708,11 +708,11 @@ do
 	-- Автообновление списка игроков
 	Players.PlayerAdded:Connect(function()
 		task.wait(1)
-		Dropdown:SetValues(updateTeleportPlayers())
+		Dropdown:Refresh(updateTeleportPlayers())
 	end)
 
 	Players.PlayerRemoving:Connect(function()
-		Dropdown:SetValues(updateTeleportPlayers())
+		Dropdown:Refresh(updateTeleportPlayers())
 	end)
 
 	-- Логика телепорта
@@ -752,7 +752,7 @@ do
 		Title = "Update players list",
 		Locked = false,
 		Callback = function()
-			Dropdown:SetValues(updateTeleportPlayers())
+			Dropdown:Refresh(updateTeleportPlayers())
 		end
 	})
 
@@ -2066,11 +2066,11 @@ end
         -- Автообновление игроков
         Players.PlayerAdded:Connect(function()
             task.wait(1)
-            Dropdown:SetValues(updateTrollingPlayers())
+            Dropdown:Refresh(updateTrollingPlayers())
         end)
 
         Players.PlayerRemoving:Connect(function()
-            Dropdown:SetValues(updateTrollingPlayers())
+            Dropdown:Refresh(updateTrollingPlayers())
         end)
 
         -- === Notification ===
@@ -2774,10 +2774,10 @@ end
 
 		-- Автообновление списка игроков в Dropdown
 		Players.PlayerAdded:Connect(function()
-			Dropdown:SetValues(getPlayerList())
+			Dropdown:Refresh(getPlayerList())
 		end)
 		Players.PlayerRemoving:Connect(function()
-			Dropdown:SetValues(getPlayerList())
+			Dropdown:Refresh(getPlayerList())
 		end)
 
 
